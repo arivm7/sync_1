@@ -1,0 +1,20 @@
+[Desktop Entry]
+Comment[ru_RU]=Скрипт индивидуальной синхронизации. Отправить файлы на сервер
+Comment=Скрипт индивидуальной синхронизации. Отправить файлы на сервер
+Comment[ru_UA]=Скрипт индивидуальной синхронизации. Отправить файлы на сервер
+Exec=sync_all.sh UP_INIT
+GenericName[ru_RU]=
+GenericName=
+GenericName[ru_UA]=
+Icon=sync_1_up.icon.svg
+MimeType=
+Name[ru_RU]=SYNC UP
+Name=SYNC UP
+Name[ru_UA]=SYNC UP
+Path=.
+StartupNotify=true
+Terminal=true
+TerminalOptions=\s--noclose
+Type=Application
+X-KDE-SubstituteUID=false
+X-KDE-Username=

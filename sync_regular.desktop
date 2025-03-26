@@ -1,0 +1,20 @@
+[Desktop Entry]
+Comment[ru_RU]=Скрипт индивидуальной синхронизации. Синхронизировать все папаки.
+Comment=Скрипт индивидуальной синхронизации. Синхронизировать все папаки.
+Comment[ru_UA]=Скрипт индивидуальной синхронизации. Синхронизировать все папаки.
+Exec=sync_all.sh
+GenericName[ru_RU]=
+GenericName=
+GenericName[ru_UA]=
+Icon=sync_1.icon.svg
+MimeType=
+Name[ru_RU]=SYNC REGULAR
+Name=SYNC REGULAR
+Name[ru_UA]=SYNC REGULAR
+Path=.
+StartupNotify=true
+Terminal=true
+TerminalOptions=\s--noclose
+Type=Application
+X-KDE-SubstituteUID=false
+X-KDE-Username=
