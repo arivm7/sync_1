@@ -2,13 +2,22 @@
 
 
 
-VERSION="1.2.3 (2025-03-25)"
+VERSION="1.2.4 (2025-03-29)"
 
-logger -p info "SYNC_ALL: BEG: $(date)"
-logger -p info "SYNC_ALL: VER: ${VERSION}"
-logger -p info "SYNC_ALL: CMD: $0 $1 $2 $3 $4 $5 $6 $7 $8 $9"
+SYNC_ALL_LIST_FILE="sync_all.list"
+SYNC1="${HOME}/bin/sync_1.sh"  # скрипт синхронизатор
+WAIT_END=10 #seconds для просмотря результатв синхронизации
+LOG_PREFIX="SYNC_ALL: "
 
-SYNC1="${HOME}/bin/sync_1.sh"
+logger -p info "${LOG_PREFIX} BEG: $(date)"
+logger -p info "${LOG_PREFIX} VER: ${VERSION}"
+logger -p info "${LOG_PREFIX} CMD: $0 $1 $2 $3 $4 $5 $6 $7 $8 $9"
+
+# Переходим в папку, где находится скрипт, чтобы правильно видеть конфиг-файл
+SCRIPT_PATH=$(realpath "$0")
+SCRIPT_DIR=$(dirname "${SCRIPT_PATH}")
+cd "${SCRIPT_DIR}" || { echo "По какой-то причине переход в папку размещения скрипла не удался." ; exit 1; } 
+
 
 
 # Поддерживаемые пользовательские комманды
@@ -22,7 +31,17 @@ SYNC_STATUS_UP_EDIT="UP_EDIT"
 SYNC_STATUS_UNPAUSE="UNPAUSE"
 
 
+
+#
 # Пользовательская комманда из списка выше
+# Используется для того, чтоыб всем папкам передать определеннуб команду
+# например:
+# sync_all.sh UP_INIT -- для полного обновления всех файлов на сервере с локального компьютера и обновления файлов на всех подключенных к синхронизауии компьютерах
+# РИСК:
+# если злоумышленник удалит файлы на локальном компьюбтере и выполнит эту комманду, 
+# то файлы удаляться на всех клинтских компьютерах при следующей синхронизации. 
+# Хотя, так-же функционируют все системы синхронизации.
+# 
 USER_CMD="$1"
 
 if [  -n "${USER_CMD}" ]                             && \
@@ -35,13 +54,18 @@ if [  -n "${USER_CMD}" ]                             && \
      ( ! "${USER_CMD}" = "${SYNC_STATUS_UP_EDIT}" )  && \
      ( ! "${USER_CMD}" = "${SYNC_STATUS_UNPAUSE}" ))); 
 then
-    ERR="SYNC_ALL: ERROR: Пользовательская комманда ${USER_CMD} не верна."
+    ERR="${LOG_PREFIX} ERROR: Пользовательская комманда ${USER_CMD} не верна."
     logger -p info "${ERR}"
     echo "${ERR}"
     exit 1;
 fi
 
 
+#
+# Запуск синхронизации для указанной папакм.
+# С предварительной проверкой наличия самой папаки, 
+# и наличия в ней папки синхронизатора
+#
 run_one_dir()
 {
     # $1 -- папка для синхронизации
@@ -67,6 +91,11 @@ run_one_dir()
 
 
 
+#
+# Предварительная информация перед запуском синхронизации 
+# для визуального разделения результатов команд синхронизации.
+# Информационный баннер перез запуском синхронизации
+#
 run_banner()
 {
     # $1 -- Папка синхронизации
@@ -91,11 +120,18 @@ run_banner()
 ##  Собственно, список синхронизируемых папок   =
 ##                                              =
 
-run_banner "${HOME}/bin"         "BIN"           
-run_banner "${HOME}/Documents"   "DOCUMENTS"     
-run_banner "${HOME}/Public/Soft" "SOFT"          
-run_banner "${HOME}/Games/SC"    "SC saves"      
-run_banner "${HOME}/Games/SC2"   "SC2 saves"     
+while read -r line_raw; do
+    # Проверяем, есть ли комментарий в строке
+    if ! [[ $line_raw == *"#"* ]]; then
+        # Если комментария нет, то
+        # Используем eval для обработки кавычек
+        eval "set -- $line_raw"
+        if ! [ "#$1#" == "##" ]; then
+            # Если параметр есть, то запускаем
+            run_banner "$1" "$2"
+        fi
+    fi
+done < ${SYNC_ALL_LIST_FILE}
 
 ##                                              =
 ##  конец списка синхронизации                  =
@@ -104,12 +140,10 @@ run_banner "${HOME}/Games/SC2"   "SC2 saves"
 
 
 
-WAIT_END=15 #seconds
-
 echo "===================="
 echo "Все выполнено. Окно можно закрыть."
 echo "Автоматическое закрытие через [${WAIT_END}] сек."
-logger -p info "SYNC_ALL: END: $(date)"
+logger -p info "${LOG_PREFIX} END: $(date)"
 echo "===================="
 sleep ${WAIT_END}
 
