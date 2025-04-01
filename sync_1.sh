@@ -130,8 +130,8 @@ CMD_TRANSFER_DATA="rsync \
 sync_help()
 {
     echo "Скрипт синхронизации папки с копией на сервере | Версия ${VERSION}"
-    # shellcheck disable=SC2028
-    echo "Использование:\n\
+    # shellcheck disable=SC2059
+    printf "Использование:\n\
     ${APP_NAME} <локальная_папка> [${SYNC_STATUS_REGULAR}|${SYNC_STATUS_UP}|${SYNC_STATUS_DL}|${SYNC_STATUS_UP_INIT}|${SYNC_STATUS_DL_INIT}|${SYNC_STATUS_PAUSE}|${SYNC_STATUS_UP_EDIT}|${SYNC_STATUS_UNPAUSE}] \n\
     \n\
     ${SYNC_STATUS_REGULAR} -- действие по умолчанию. \n\

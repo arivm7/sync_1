@@ -2,7 +2,8 @@
 
 
 
-VERSION="1.2.4 (2025-03-29)"
+VERSION="1.2.5 (2025-04-01)"
+APP_NAME=$(basename "$0")
 
 SYNC_ALL_LIST_FILE="sync_all.list"
 SYNC1="${HOME}/bin/sync_1.sh"  # скрипт синхронизатор
@@ -32,6 +33,46 @@ SYNC_STATUS_UNPAUSE="UNPAUSE"
 
 
 
+if [ "$1" = "--help" ]    || [ "$1" = "-h" ] || [ "$1" = "-H" ] || \
+   [ "$1" = "--version" ] || [ "$1" = "-v" ] || [ "$1" = "-V" ] ; then
+
+    echo "" 
+    echo "${APP_NAME} -- Версия ${VERSION}" 
+    echo "Скрипт массовой синхронизации списка папок." 
+    echo "Вспомогательный скрипт из комплекта персональной синхронизации sync_1." 
+    echo "Подробности о работе см sync_1.sh --help" 
+    echo "" 
+    echo "Список файлов для синхронизации берётся из файла ${SYNC_ALL_LIST_FILE}" 
+    echo "в котором просто перечислены папки для синхронизации " 
+    echo "и не обязательное текстовое сообщение-баннер для оформления лога синхронизации." 
+    echo ""
+    echo "Использование:"
+    echo "    ${APP_NAME} [${SYNC_STATUS_REGULAR}|${SYNC_STATUS_UP}|${SYNC_STATUS_DL}|${SYNC_STATUS_UP_INIT}|${SYNC_STATUS_DL_INIT}|${SYNC_STATUS_PAUSE}|${SYNC_STATUS_UP_EDIT}|${SYNC_STATUS_UNPAUSE}] "
+    echo "    "
+    echo "    ${SYNC_STATUS_REGULAR} -- действие по умолчанию. Указывать не обязательно."
+    echo "               Запись данных на сервер (${SYNC_STATUS_UP}) и скачивание данных с сервера (${SYNC_STATUS_DL}) "
+    echo "               без удаления расхождений."
+    echo "    ${SYNC_STATUS_UP}      -- Запись данных на сервер без удаления."
+    echo "    ${SYNC_STATUS_DL}      -- Чтение данных с сервера без удаления."
+    echo "    ${SYNC_STATUS_DL_INIT} -- Загрузка данных с сервера на локальный хост "
+    echo "               с *удалением* расхождений на локальном хосте."
+    echo "    $SYNC_STATUS_UP_INIT -- Запись данных с локального хоста на сервер "
+    echo "               с *удалением* расхождений на сервере, и установка для всех хостов "
+    echo "               статуса ${SYNC_STATUS_DL_INIT} для обязательной загрузки изменений."
+    echo "    ${SYNC_STATUS_PAUSE}   -- Обмен данными не происходит. "
+    echo "               Режим для изменений данных на самом сервере. "
+    echo "               Никаая комманда с серера ничего не скачивает. "
+    echo "               Для изменения файлов на сервере в этом режиме используется комманда ${SYNC_STATUS_UP_EDIT}. "
+    echo "    ${SYNC_STATUS_UP_EDIT} -- Отправляет данные на сервер с удалением расхождений на стороне сервера."
+    echo "               Работает только если статус сервера ${SYNC_STATUS_PAUSE}. "
+    echo "               Работает как ${SYNC_STATUS_UP_INIT} только НЕ изменяет статус синхронизации для клиентов."
+    echo "    ${SYNC_STATUS_UNPAUSE} -- Обмен данными не происходит. "
+    echo "               Для всех хостов устанавливается статус ${SYNC_STATUS_DL_INIT} "
+    echo ""
+    exit 0
+fi
+
+
 #
 # Пользовательская комманда из списка выше
 # Используется для того, чтоыб всем папкам передать определеннуб команду
@@ -45,14 +86,14 @@ SYNC_STATUS_UNPAUSE="UNPAUSE"
 USER_CMD="$1"
 
 if [  -n "${USER_CMD}" ]                             && \
-   ((( ! "${USER_CMD}" = "${SYNC_STATUS_UP}" )       && \
-     ( ! "${USER_CMD}" = "${SYNC_STATUS_DL}" )       && \
-     ( ! "${USER_CMD}" = "${SYNC_STATUS_REGULAR}" )  && \
-     ( ! "${USER_CMD}" = "${SYNC_STATUS_UP_INIT}" )  && \
-     ( ! "${USER_CMD}" = "${SYNC_STATUS_DL_INIT}" )  && \
-     ( ! "${USER_CMD}" = "${SYNC_STATUS_PAUSE}" )    && \
-     ( ! "${USER_CMD}" = "${SYNC_STATUS_UP_EDIT}" )  && \
-     ( ! "${USER_CMD}" = "${SYNC_STATUS_UNPAUSE}" ))); 
+   ((( ! "${USER_CMD}" == "${SYNC_STATUS_UP}" )       && \
+     ( ! "${USER_CMD}" == "${SYNC_STATUS_DL}" )       && \
+     ( ! "${USER_CMD}" == "${SYNC_STATUS_REGULAR}" )  && \
+     ( ! "${USER_CMD}" == "${SYNC_STATUS_UP_INIT}" )  && \
+     ( ! "${USER_CMD}" == "${SYNC_STATUS_DL_INIT}" )  && \
+     ( ! "${USER_CMD}" == "${SYNC_STATUS_PAUSE}" )    && \
+     ( ! "${USER_CMD}" == "${SYNC_STATUS_UP_EDIT}" )  && \
+     ( ! "${USER_CMD}" == "${SYNC_STATUS_UNPAUSE}" ))); 
 then
     ERR="${LOG_PREFIX} ERROR: Пользовательская комманда ${USER_CMD} не верна."
     logger -p info "${ERR}"
