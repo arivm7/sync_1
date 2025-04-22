@@ -2,7 +2,7 @@
 
 
 # Версия скрипта
-# VERSION="1.2.3 (2025-03-25)"
+# VERSION="1.3.0 (2025-04-25)"
 
 # Алиасы
 alias s1='sync_1.sh'
@@ -18,4 +18,4 @@ alias s1_up_edit='s1 UP_EDIT'
 alias s1_all='sync_all.sh'
 
 # Авдополнение в командной строке
-complete -W "REGULAR UP DL DL_INIT UP_INIT PAUSE UP_EDIT UNPAUSE" s1 sync_1.sh
+complete -W "REGULAR UP DL DL_INIT UP_INIT PAUSE UP_EDIT UNPAUSE CLOUD_UP_INIT CLOUD_DL_INIT" s1 sync_1.sh

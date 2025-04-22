@@ -2,12 +2,27 @@
 
 
 
-VERSION="1.2.4 (2025-03-29)"
+VERSION="1.2.4 (2025-04-01)"
+APP_NAME=$(basename "$0")
 echo "SYNC INSTALLER VER: ${VERSION}"
 
 
 
+if [ "$1" = "--help" ]    || [ "$1" = "-h" ] || [ "$1" = "-H" ] || \
+   [ "$1" = "--version" ] || [ "$1" = "-v" ] || [ "$1" = "-V" ] ; then
+
+    echo "" 
+    echo "${APP_NAME} -- Версия ${VERSION}" 
+    echo "Скрипт установки в систему рабочих скриптов, иконок и .desktop-файлов." 
+    echo "Вспомогательный скрипт из комплекта персональной синхронизации sync_1." 
+    echo "Подробности о работе смотрите в справках соответствующих скриптов." 
+    echo ""
+    exit 0
+fi
+
+
 # Список имен файлов скриптов для копирования
+# shellcheck disable=SC2034
 scripts_files=(
 sync_1.sh
 sync_all.sh
@@ -19,17 +34,23 @@ scripts_to="${HOME}/bin"
 
 
 # Список имен файлов .desktop для копирования
+# shellcheck disable=SC2034
 icon_files=(
 sync_1.icon.svg
 sync_1_up.icon.svg
 )
 # папка назначения для копирования скриптов
 icon_to="${HOME}/bin/icons"
+
+
+
+# Конфиг файл для массовой синхронизации
 SYNC_ALL_LIST_FILE="sync_all.list"
 
 
 
 # Список имен файлов .desktop для копирования
+# shellcheck disable=SC2034
 desktop_files=(
 sync_regular.desktop
 sync_up.desktop
@@ -48,7 +69,7 @@ ALIASES="${scripts_to}/sync_1_aliases.sh"
 
 
 # Копирование файлов в рабочий каталог
-# $1 -- список файлов
+# $1 -- имя массива со списком файлов
 # $2 -- папка назначения
 copy_file_to()
 {
@@ -66,6 +87,7 @@ copy_file_to()
     done
     printf "==== Копирование завершено\n\n"
 }
+
 
 
 copy_file_to scripts_files "${scripts_to}"

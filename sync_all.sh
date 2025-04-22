@@ -4,6 +4,7 @@
 
 VERSION="1.2.5 (2025-04-01)"
 APP_NAME=$(basename "$0")
+echo "${APP_NAME} VERSION ${VERSION}"
 
 SYNC_ALL_LIST_FILE="sync_all.list"
 SYNC1="${HOME}/bin/sync_1.sh"  # скрипт синхронизатор
@@ -98,7 +99,7 @@ then
     ERR="${LOG_PREFIX} ERROR: Пользовательская комманда ${USER_CMD} не верна."
     logger -p info "${ERR}"
     echo "${ERR}"
-    exit 1;
+    exit 2;
 fi
 
 
