@@ -2,7 +2,11 @@
 
 
 
-VERSION="1.3.0-beta (2025-04-25)"
+VERSION="1.3.1-beta (2025-04-22)"
+LAST_CHANGES="\
+v1.3.1 2025-04-22: Дабавлено дефолтное наполнние файла excludes при автосоздании репозитория командой CLOUD_UP_INIT
+v1.3.0 2025-04-21: Дабавлена Комманда автоматического создания удалённого репозитория командой CLOUD_UP_INIT
+"
 
 APP_NAME=$(basename "$0")
 APP_PATH=$(dirname "$0")
@@ -19,6 +23,23 @@ USER_PREFIX="USER_"
 MY_NAME="${USER_PREFIX}$(hostname)"        # Имя этого хоста вида USER_<hostname>
 
 SYNC_ALL_LIST_FILE="sync_all.list"
+
+# Начальный список файла excludes для исключений rsync
+EXCLUDES="\
+*.kate-swp
+*.swp
+.git
+_.git
+.Trash*
+.idea
+.sync/*
+.~lock.*
+venv
+venv/*
+__pycache__
+"
+
+
 
 #
 # Список команд
@@ -417,6 +438,9 @@ if [ "=$1=" = "=-v=" ] || [ "$1" = "--version" ] || [ "$1" = "-V" ] || [ "$1" = 
     echo "Version: ${VERSION}"
     echo "Скрипт: ${APP_NAME}"
     echo "Папка размещения: ${APP_PATH}"
+    echo ""
+    echo "Последние изменения:"
+    echo "${LAST_CHANGES}"
     exit 0;
 
 fi
@@ -465,7 +489,7 @@ if  [ "=$1=" = "=${SYNC_CMD_CLOUD_UP_INIT}=" ]; then
     printf   ", [%s]" "${SYNC_DEST_FILE}"
     echo     "${REMOTE_PATH}/${REMOTE_FOLDER}" > "${SYNC_LOCAL}/${SYNC_DEST_FILE}"
     printf   ", [%s]" "${SYNC_EXCLUDES}"
-    touch    "${SYNC_LOCAL}/${SYNC_EXCLUDES}"
+    echo     "${EXCLUDES}" > "${SYNC_LOCAL}/${SYNC_EXCLUDES}"
     printf   ". Ок\n"
 
     echo "Создаём в папке tmp копию того, что нужно отправить на сервер"
@@ -511,8 +535,21 @@ if  [ "=$1=" = "=${SYNC_CMD_CLOUD_UP_INIT}=" ]; then
         echo "Файла [${SYNC_ALL_LIST_FILE}] нет."
     fi
 
-    echo     "Проводим обычную синхронихацию [${SYNC_CMD_REGULAR}]"
-    sync_regular "${SYNC_LOCAL}/" "${SYNC_DEST}/"
+    echo   "${LINE_TOP_}"
+    echo   "${LINE_FREE}"
+         # "║                                                                               ║"
+    printf "║     Проверьте, пожалуста, файл исключений для синхронизации.                  ║\n" 
+    printf "║     Исправьте его для ваших потребностей.                                     ║\n" 
+    printf "║     За тем, выполните комманду синхронизации для отправки данных на сервер    ║\n" 
+    echo   "${LINE_FREE}"
+    printf "║     Файл исключений        : [%-46s] ║\n" "${SYNC_LOCAL}/${SYNC_EXCLUDES}"
+    echo   "${LINE_FREE}"
+    printf "║     Комманда синхронизации : [%-46s] ║\n" "${APP_NAME} ."
+    echo   "${LINE_FREE}"
+    echo   "${LINE_BOT_}"
+
+    # echo     "Проводим обычную синхронихацию [${SYNC_CMD_REGULAR}]"
+    # sync_regular "${SYNC_LOCAL}/" "${SYNC_DEST}/"
 
     exit 0;
 fi
