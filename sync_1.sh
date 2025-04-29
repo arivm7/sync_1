@@ -527,7 +527,7 @@ if  [ "=$1=" = "=${SYNC_CMD_CLOUD_UP_INIT}=" ]; then
                 echo "# пользователем ${USER}"
                 echo "# коммандой ${SYNC_CMD_CLOUD_UP_INIT}"
                 echo "#"
-                echo "${SYNC_LOCAL}"
+                echo "\"${SYNC_LOCAL}\" \"$(basename "${SYNC_LOCAL}")\""
             }  >> "${APP_PATH}/${SYNC_ALL_LIST_FILE}"
             printf "...Ok.\n"; 
         fi
@@ -542,9 +542,9 @@ if  [ "=$1=" = "=${SYNC_CMD_CLOUD_UP_INIT}=" ]; then
     printf "║     Исправьте его для ваших потребностей.                                     ║\n" 
     printf "║     За тем, выполните комманду синхронизации для отправки данных на сервер    ║\n" 
     echo   "${LINE_FREE}"
-    printf "║     Файл исключений        : [%-46s] ║\n" "${SYNC_LOCAL}/${SYNC_EXCLUDES}"
+    printf "║     Файл исключений         : [%-45s] ║\n" "${SYNC_LOCAL}/${SYNC_EXCLUDES}"
     echo   "${LINE_FREE}"
-    printf "║     Комманда синхронизации : [%-46s] ║\n" "${APP_NAME} ."
+    printf "║     Выполните синхронизацию : [%-45s] ║\n" "${APP_NAME} ."
     echo   "${LINE_FREE}"
     echo   "${LINE_BOT_}"
 

@@ -2,9 +2,13 @@
 
 
 
-VERSION="1.2.5 (2025-04-01)"
+VERSION="1.2.6 (2025-04-25)"
+LAST_CHANGES="\
+v1.2.6 (2025-04-25): Рефакторинг run_one_dir()\
+"
+
 APP_NAME=$(basename "$0")
-echo "${APP_NAME} VERSION ${VERSION}"
+APP_PATH=$(dirname "$0")
 
 SYNC_ALL_LIST_FILE="sync_all.list"
 SYNC1="${HOME}/bin/sync_1.sh"  # скрипт синхронизатор
@@ -34,14 +38,15 @@ SYNC_STATUS_UNPAUSE="UNPAUSE"
 
 
 
-if [ "$1" = "--help" ]    || [ "$1" = "-h" ] || [ "$1" = "-H" ] || \
-   [ "$1" = "--version" ] || [ "$1" = "-v" ] || [ "$1" = "-V" ] ; then
-
+help()
+{
     echo "" 
-    echo "${APP_NAME} -- Версия ${VERSION}" 
+    echo "Скрипт: ${APP_NAME} Версия: ${VERSION}"
+    echo "Папка размещения: \"${APP_PATH}\""
+    echo "" 
     echo "Скрипт массовой синхронизации списка папок." 
     echo "Вспомогательный скрипт из комплекта персональной синхронизации sync_1." 
-    echo "Подробности о работе см sync_1.sh --help" 
+    echo "Подробности о работе см. основной скрипт \"sync_1.sh --help\"" 
     echo "" 
     echo "Список файлов для синхронизации берётся из файла ${SYNC_ALL_LIST_FILE}" 
     echo "в котором просто перечислены папки для синхронизации " 
@@ -70,8 +75,34 @@ if [ "$1" = "--help" ]    || [ "$1" = "-h" ] || [ "$1" = "-H" ] || \
     echo "    ${SYNC_STATUS_UNPAUSE} -- Обмен данными не происходит. "
     echo "               Для всех хостов устанавливается статус ${SYNC_STATUS_DL_INIT} "
     echo ""
+    echo "Последние изменения"
+    echo "${LAST_CHANGES}"
+    echo ""
+}
+
+
+
+if  [ "$1" = "--help" ]    || [ "$1" = "-h" ] || [ "$1" = "-H" ] ; then
+    help
     exit 0
 fi
+
+
+
+if  [ "$1" = "--version" ] || [ "$1" = "-v" ] || [ "$1" = "-V" ] ; then
+    echo "Скрипт             : ${APP_NAME}"
+    echo "Версия             : ${VERSION}"
+    echo "Папка размещения   : \"${APP_PATH}\""
+    echo "Последние изменения"
+    echo "${LAST_CHANGES}"
+    echo ""
+    exit 0
+fi
+
+
+
+echo "${APP_NAME} VERSION ${VERSION}"
+
 
 
 #
@@ -112,21 +143,23 @@ run_one_dir()
 {
     # $1 -- папка для синхронизации
     P="$1"
-    echo "[${P}/.sync/dest] -- Проверка наличия файла"
+    # shellcheck disable=SC2059
+    printf "[${P}/.sync/dest] -- Проверка наличия файла... "
     if [ -f "${P}/.sync/dest" ]; then
-        echo "[${P}/.sync/dest] -- Есть"
-        echo "[${P}/.sync/excludes] -- Проверка папки"
+        echo "Есть."
+        # shellcheck disable=SC2059
+        printf "[${P}/.sync/excludes] -- Проверка наличия файла... "
         if [ -f "${P}/.sync/excludes" ]; then
-            echo "[${P}/.sync/excludes] -- Есть"
+            echo "Есть."
             echo "Стартуем..."
             $SYNC1 "${P}" "${USER_CMD}"
             echo "...закончили"
         else
-            echo "[${P}/.sync/excludes] -- Нет файла"
+            echo "Нет файла"
             echo "см.: sync_1.sh --help"
         fi
     else
-        echo "[${P}/.sync/dest] -- Нет файла"
+        echo "Нет файла."
         echo "см.: sync_1.sh --help"
     fi
 }
