@@ -1,24 +1,93 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
+set -u
+set -o pipefail
 
 
 
-VERSION="1.2.4 (2025-04-01)"
+VERSION="1.3.0 (2025-04-29)"
 APP_NAME=$(basename "$0")
+LAST_CHANGES="\
+v1.3.0 (2025-04-29): Добавление установки зависимостей."
+
 echo "SYNC INSTALLER VER: ${VERSION}"
 
 
 
-if [ "$1" = "--help" ]    || [ "$1" = "-h" ] || [ "$1" = "-H" ] || \
-   [ "$1" = "--version" ] || [ "$1" = "-v" ] || [ "$1" = "-V" ] ; then
+APP_SYNC="rsync";    PKG_SYNC="rsync";
+APP_SSH="ssh";       PKG_SSH="openssh-client";
+APP_FIGLET="figlet"; PKG_FIGLET="figlet";
 
+
+
+print_help()
+{
     echo "" 
     echo "${APP_NAME} -- Версия ${VERSION}" 
     echo "Скрипт установки в систему рабочих скриптов, иконок и .desktop-файлов." 
     echo "Вспомогательный скрипт из комплекта персональной синхронизации sync_1." 
     echo "Подробности о работе смотрите в справках соответствующих скриптов." 
     echo ""
+    echo "Последние изменения"
+    echo "${LAST_CHANGES}"
+    echo ""
+}
+
+
+
+#
+# Проверяет установлена ли программа. 
+# Если нет, то устанавливает пакет, в котором она находится
+# $1 -- Программа
+# $2 -- Пакет, в котором эта программа. Для установки программы.
+#
+install_if_not()
+{
+    APP="$1"
+    PKG="$2"
+    CMD_INST="sudo apt install ${PKG}"
+
+    eval "set -- $(whereis "${APP}")"
+    if [ "$#" -lt 2 ]; then
+        # shellcheck disable=SC2059
+        printf "[${APP}] из пакета [${PKG}] не установлена. Установить? (1/0) "
+        read -r -n 1 YES
+        echo ""
+        if  [ "#${YES}#" == "#1#" ]; then
+            echo "--Устанавливаем---------------------------------"
+            ${CMD_INST}
+            exit_code=$?
+            echo "------------------------------------------------"
+            if [ $exit_code -eq 0 ]; then
+                echo "${PKG} Установлена успешно."
+            else
+                echo "Установка [${PKG}] не удалась."
+            fi
+            echo "------------------------------------------------"
+        fi
+    else
+        echo "Программа [${APP}] из пакета [${PKG}] есть."
+    fi
+}
+
+
+
+if  [ "$#" -gt 1 ] && \
+    { \
+        [ "$1" = "--help" ] || [ "$1" = "-h" ] || [ "$1" = "-H" ] || \
+        [ "$1" = "--version" ] || [ "$1" = "-v" ] || [ "$1" = "-V" ]; \
+    }; 
+then
+    print_help
     exit 0
 fi
+
+
+
+install_if_not "${APP_SYNC}"   "${PKG_SYNC}"
+install_if_not "${APP_SSH}"    "${PKG_SSH}"
+install_if_not "${APP_FIGLET}" "${PKG_FIGLET}"
+
 
 
 # Список имен файлов скриптов для копирования
@@ -122,7 +191,7 @@ echo ""
 
 
 echo ""
-echo "Исправляем путив .desktop-файлах"
+echo "Исправляем пути в .desktop-файлах"
 
 sed -i "s#Exec=sync_all.sh#Exec=${scripts_to}/sync_all.sh#g" "${desktop_to}/sync_regular.desktop"
 sed -i "s#Exec=sync_all.sh#Exec=${scripts_to}/sync_all.sh#g" "${desktop_to}/sync_up.desktop"

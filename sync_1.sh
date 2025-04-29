@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 
 
@@ -658,9 +658,9 @@ if [ ! -f "${SYNC_LOCAL}/${TEMP}/${MY_NAME}" ]; then
 
 else
 
-    echo "Скачали файл статуса сервера"
+    printf "Скачали файл статуса сервера: "
     cat "${SYNC_LOCAL}/${TEMP}/${MY_NAME}"
-    echo "----------------------------"
+
     SYNC_STATUS=$(cat "${SYNC_LOCAL}/${TEMP}/${MY_NAME}")
     if [ -f "${SYNC_LOCAL}/${TEMP}/${MY_NAME}" ]; then
         rm "${SYNC_LOCAL}/${TEMP}/${MY_NAME}"
