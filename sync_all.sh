@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
+set -e
+set -u
+set -o pipefail
 
 
-
-VERSION="1.2.6 (2025-04-25)"
+VERSION="1.2.7 (2025-05-08)"
 LAST_CHANGES="\
-v1.2.6 (2025-04-25): Рефакторинг run_one_dir()\
+v1.2.6 (2025-04-25): Рефакторинг run_one_dir()
+v1.2.7 (2025-05-08): Добавлен параметр LOG для показа логов работы скрипта
 "
 
 APP_NAME=$(basename "$0")
@@ -14,10 +17,7 @@ SYNC_ALL_LIST_FILE="sync_all.list"
 SYNC1="${HOME}/bin/sync_1.sh"  # скрипт синхронизатор
 WAIT_END=10 #seconds для просмотря результатв синхронизации
 LOG_PREFIX="SYNC_ALL: "
-
-logger -p info "${LOG_PREFIX} BEG: $(date)"
-logger -p info "${LOG_PREFIX} VER: ${VERSION}"
-logger -p info "${LOG_PREFIX} CMD: $0 $1 $2 $3 $4 $5 $6 $7 $8 $9"
+LOG_COUNT_ROWS="20"
 
 # Переходим в папку, где находится скрипт, чтобы правильно видеть конфиг-файл
 SCRIPT_PATH=$(realpath "$0")
@@ -27,6 +27,7 @@ cd "${SCRIPT_DIR}" || { echo "По какой-то причине переход
 
 
 # Поддерживаемые пользовательские комманды
+SHOW_LOG="LOG"
 SYNC_STATUS_UP="UP"
 SYNC_STATUS_DL="DL"
 SYNC_STATUS_REGULAR="REGULAR"
@@ -38,7 +39,7 @@ SYNC_STATUS_UNPAUSE="UNPAUSE"
 
 
 
-help()
+print_help()
 {
     echo "" 
     echo "Скрипт: ${APP_NAME} Версия: ${VERSION}"
@@ -75,6 +76,9 @@ help()
     echo "    ${SYNC_STATUS_UNPAUSE} -- Обмен данными не происходит. "
     echo "               Для всех хостов устанавливается статус ${SYNC_STATUS_DL_INIT} "
     echo ""
+    echo "    ${APP_NAME} ${SHOW_LOG} <количество_строк>"
+    echo "               Показыват указанное количство строк из лог-файла. По умолчанию количечтво = ${LOG_COUNT_ROWS}"
+    echo ""
     echo "Последние изменения"
     echo "${LAST_CHANGES}"
     echo ""
@@ -82,26 +86,55 @@ help()
 
 
 
-if  [ "$1" = "--help" ]    || [ "$1" = "-h" ] || [ "$1" = "-H" ] ; then
-    help
-    exit 0
-fi
-
-
-
-if  [ "$1" = "--version" ] || [ "$1" = "-v" ] || [ "$1" = "-V" ] ; then
+print_version()
+{
     echo "Скрипт             : ${APP_NAME}"
     echo "Версия             : ${VERSION}"
     echo "Папка размещения   : \"${APP_PATH}\""
     echo "Последние изменения"
     echo "${LAST_CHANGES}"
     echo ""
+}
+
+
+
+print_log()
+{
+    if  [ "$#" -ge 1 ] ;
+    then
+        LOG_COUNT="$1"
+    else
+        LOG_COUNT="${LOG_COUNT_ROWS}"
+    fi
+    journalctl -p info --since today | grep "$LOG_PREFIX" | tail -n "${LOG_COUNT}"
+}
+
+
+
+if  [ "$#" -ge 1 ] && { [ "$1" = "--help" ] || [ "$1" = "-h" ] || [ "$1" = "-H" ]; } then
+    print_help
     exit 0
 fi
 
 
 
-echo "${APP_NAME} VERSION ${VERSION}"
+if  [ "$#" -ge 1 ] && { [ "$1" = "--version" ] || [ "$1" = "-v" ] || [ "$1" = "-V" ]; } then
+    print_version
+    exit 0
+fi
+
+
+
+if  [ "$#" -ge 1 ] && [ "=$1=" = "=${SHOW_LOG}=" ] ;
+then
+    if  [ "$#" -ge 2 ] ;
+    then
+        print_log "$2"
+    else
+        print_log
+    fi
+    exit 0
+fi
 
 
 
@@ -115,23 +148,28 @@ echo "${APP_NAME} VERSION ${VERSION}"
 # то файлы удаляться на всех клинтских компьютерах при следующей синхронизации. 
 # Хотя, так-же функционируют все системы синхронизации.
 # 
-USER_CMD="$1"
+USER_CMD=""
 
-if [  -n "${USER_CMD}" ]                             && \
-   ((( ! "${USER_CMD}" == "${SYNC_STATUS_UP}" )       && \
-     ( ! "${USER_CMD}" == "${SYNC_STATUS_DL}" )       && \
-     ( ! "${USER_CMD}" == "${SYNC_STATUS_REGULAR}" )  && \
-     ( ! "${USER_CMD}" == "${SYNC_STATUS_UP_INIT}" )  && \
-     ( ! "${USER_CMD}" == "${SYNC_STATUS_DL_INIT}" )  && \
-     ( ! "${USER_CMD}" == "${SYNC_STATUS_PAUSE}" )    && \
-     ( ! "${USER_CMD}" == "${SYNC_STATUS_UP_EDIT}" )  && \
-     ( ! "${USER_CMD}" == "${SYNC_STATUS_UNPAUSE}" ))); 
+if  [ "$#" -ge 1 ];
 then
-    ERR="${LOG_PREFIX} ERROR: Пользовательская комманда ${USER_CMD} не верна."
-    logger -p info "${ERR}"
-    echo "${ERR}"
-    exit 2;
+    USER_CMD="$1"
+    if  [ ! "=$1=" = "=${SHOW_LOG}="            ] && \
+        [ ! "=$1=" = "=${SYNC_STATUS_UP}="      ] && \
+        [ ! "=$1=" = "=${SYNC_STATUS_DL}="      ] && \
+        [ ! "=$1=" = "=${SYNC_STATUS_REGULAR}=" ] && \
+        [ ! "=$1=" = "=${SYNC_STATUS_UP_INIT}=" ] && \
+        [ ! "=$1=" = "=${SYNC_STATUS_DL_INIT}=" ] && \
+        [ ! "=$1=" = "=${SYNC_STATUS_PAUSE}="   ] && \
+        [ ! "=$1=" = "=${SYNC_STATUS_UP_EDIT}=" ] && \
+        [ ! "=$1=" = "=${SYNC_STATUS_UNPAUSE}=" ];
+    then
+        ERR="${LOG_PREFIX} ERROR: Пользовательская комманда ${USER_CMD} не верна."
+        logger -p info "${ERR}"
+        echo "${ERR}"
+        exit 2;
+    fi
 fi
+
 
 
 #
@@ -141,26 +179,34 @@ fi
 #
 run_one_dir()
 {
-    # $1 -- папка для синхронизации
-    P="$1"
-    # shellcheck disable=SC2059
-    printf "[${P}/.sync/dest] -- Проверка наличия файла... "
-    if [ -f "${P}/.sync/dest" ]; then
-        echo "Есть."
+    if  [ "$#" -ge 1 ];
+    then
+        # $1 -- папка для синхронизации
+        P="$1"
         # shellcheck disable=SC2059
-        printf "[${P}/.sync/excludes] -- Проверка наличия файла... "
-        if [ -f "${P}/.sync/excludes" ]; then
+        printf "[${P}/.sync/dest] -- Проверка наличия файла... "
+        if [ -f "${P}/.sync/dest" ]; then
             echo "Есть."
-            echo "Стартуем..."
-            $SYNC1 "${P}" "${USER_CMD}"
-            echo "...закончили"
+            # shellcheck disable=SC2059
+            printf "[${P}/.sync/excludes] -- Проверка наличия файла... "
+            if [ -f "${P}/.sync/excludes" ]; then
+                echo "Есть."
+                echo "Стартуем..."
+                $SYNC1 "${P}" "${USER_CMD}"
+                echo "...закончили"
+            else
+                echo "Нет файла"
+                echo "см.: sync_1.sh --help"
+            fi
         else
-            echo "Нет файла"
+            echo "Нет файла."
             echo "см.: sync_1.sh --help"
         fi
     else
-        echo "Нет файла."
-        echo "см.: sync_1.sh --help"
+        ERR="[run_one_dir()] Не указана папка синхронизации"
+        echo "$ERR"
+        logger -p info "${LOG_PREFIX} $ERR"
+        exit 1;
     fi
 }
 
@@ -173,20 +219,38 @@ run_one_dir()
 #
 run_banner()
 {
-    # $1 -- Папка синхронизации
-    FOLDER=$1
-    # $2 -- Строка-баннер для красивого отображени на экране
-    BANNER=$2
+    if  [ "$#" -ge 1 ];
+    then
+        # $1 -- Папка синхронизации
+        FOLDER=$1
+        # $2 -- Строка-баннер для красивого отображени на экране
+        BANNER=$2
 
-    printf "\n\n\n\n"
+        printf "\n\n\n\n"
 
-    if [ "#$BANNER#" == "##" ]; then
-        BANNER="${FOLDER}"
+        if [ "#$BANNER#" == "##" ]; then
+            BANNER="${FOLDER}"
+        fi
+        echo   "${BANNER}"
+        figlet -k "${BANNER}" -f "big"
+        run_one_dir "${FOLDER}"
+    else
+        ERR="[run_banner()] Не указана папка синхронизации"
+        echo "$ERR"
+        logger -p info "${LOG_PREFIX} $ERR"
+        exit 1;
     fi
-    echo   "${BANNER}"
-    figlet -k "${BANNER}" -f "big"
-    run_one_dir "${FOLDER}"
 }
+
+
+
+logger -p info "${LOG_PREFIX} BEG: $(date)"
+logger -p info "${LOG_PREFIX} VER: ${VERSION}"
+if  [ "$#" -ge 1 ]; then
+logger -p info "${LOG_PREFIX} CMD: $0 $1 $2 $3 $4 $5 $6 $7 $8 $9"
+fi
+
+echo "${APP_NAME} VERSION ${VERSION}"
 
 
 
@@ -195,13 +259,14 @@ run_banner()
 ##  Собственно, список синхронизируемых папок   =
 ##                                              =
 
-while read -r line_raw; do
+while read -r line_raw; 
+do
     # Проверяем, есть ли комментарий в строке
     if ! [[ $line_raw == *"#"* ]]; then
         # Если комментария нет, то
         # Используем eval для обработки кавычек
         eval "set -- $line_raw"
-        if ! [ "#$1#" == "##" ]; then
+        if [ "$#" -ge 1 ]; then
             # Если параметр есть, то запускаем
             run_banner "$1" "$2"
         fi
