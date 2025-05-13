@@ -2,10 +2,11 @@
 
 
 
-VERSION="1.3.1-beta (2025-04-22)"
+VERSION="1.3.2-beta (2025-05-08)"
 LAST_CHANGES="\
-v1.3.1 2025-04-22: Дабавлено дефолтное наполнние файла excludes при автосоздании репозитория командой CLOUD_UP_INIT
-v1.3.0 2025-04-21: Дабавлена Комманда автоматического создания удалённого репозитория командой CLOUD_UP_INIT
+v1.3.0 (2025-04-21): Дабавлена комманда автоматического создания удалённого репозитория командой CLOUD_UP_INIT
+v1.3.1 (2025-04-22): Дабавлено дефолтное наполнние файла excludes
+v1.3.2 (2025-05-08): Добавлена команда LOG для показа логов работы скрипта
 "
 
 APP_NAME=$(basename "$0")
@@ -14,15 +15,17 @@ APP_PATH=$(dirname "$0")
 SYNC_FOLDER=".sync"                        # папка параметров синхронизации
 SYNC_EXCLUDES="${SYNC_FOLDER}/excludes"    # Файл исключений для rsync
 SYNC_DEST_FILE="${SYNC_FOLDER}/dest"       # файл, в котором записан адрес удаленного каталога
-TEMP="${SYNC_FOLDER}/tmp"
+SYNC_TEMP="${SYNC_FOLDER}/tmp"             # Временная папака для работы этого скрипта
 
 LOG_FILE="${SYNC_FOLDER}/log_sync"         # Используется только для логирования того, что делает rsync
 LOG_PREFIX="SYNC_1: "                      # Используется для префикса в системном логе
+LOG_COUNT_ROWS="20"                        # Количество строк по умолчанию при просмотре логов
 
-USER_PREFIX="USER_"
+USER_PREFIX="USER_"                        # Префикс для формирования имени хоста
 MY_NAME="${USER_PREFIX}$(hostname)"        # Имя этого хоста вида USER_<hostname>
 
-SYNC_ALL_LIST_FILE="sync_all.list"
+SYNC_ALL_LIST_FILE="sync_all.list"         # Имя файла для скрипта массовой синхронизации. 
+                                           # В него добавляется строка при создании репозитория.
 
 # Начальный список файла excludes для исключений rsync
 EXCLUDES="\
@@ -37,6 +40,7 @@ _.git
 venv
 venv/*
 __pycache__
+Temporary
 "
 
 
@@ -44,6 +48,7 @@ __pycache__
 #
 # Список команд
 #
+SHOW_LOG="LOG"
 SYNC_CMD_REGULAR="REGULAR"
 SYNC_CMD_UP="UP"
 SYNC_CMD_DL="DL"
@@ -75,10 +80,29 @@ CMD="$2"
 LINE_TOP_="╔═══════════════════════════════════════════════════════════════════════════════╗"
 LINE_FREE="║                                                                               ║"
 MSG_TO_UP="║                          Отправка на сервер...⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ║"
-MSG__DIV_="╟╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╢"
+# -
+# ─
+# ┈
+# ╌
+MSG__DIV_="╟╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╢" 
 MSG_TO_DN="║                          Загрузка с сервера...⮯ ⮯ ⮯ ⮯ ⮯ ⮯ ⮯ ⮯ ⮯ ⮯ ⮯ ⮯ ⮯ ⮯ ⮯ ⮯ ║"
 LINE_BOT_="╚═══════════════════════════════════════════════════════════════════════════════╝"
 
+
+#
+# Показ логов
+#
+if  [ "$#" -ge 1 ] && [ "=$1=" = "=${SHOW_LOG}=" ] ;
+then
+    if  [ "$#" -ge 2 ] ;
+    then
+        LOG_COUNT="$2"
+    else
+        LOG_COUNT="${LOG_COUNT_ROWS}"
+    fi
+    journalctl -p info --since today | grep "$LOG_PREFIX" | tail -n "${LOG_COUNT}"
+    exit 0
+fi
 
 
 #
@@ -225,6 +249,9 @@ sync_help()
                2. Копируем <локальную_папку>/${SYNC_FOLDER} на сервер в папку <удалённая_папка>/\n\
                3. Выполняет обычную синхронизацию [${SYNC_CMD_REGULAR}] для записи данных на сервер.\n\n\
 
+    ${APP_NAME} ${SHOW_LOG} <количество_строк>
+                   Показыват указанное количство строк из лог-файла. По умолчанию количечтво = ${LOG_COUNT_ROWS}
+
     ## Пока не реализовано
     ${APP_NAME} ${SYNC_CMD_CLOUD_DL_INIT} <локальная_папка> <удалённая_папка> \n\
                Загружает sync-репозиторий с сервера в текущую папку. \n\
@@ -328,9 +355,9 @@ init_local()
 init_dest()
 {
     echo "INIT_DEST: Запись имени компьютера в ${SYNC_DEST}/${SYNC_FOLDER}/${MY_NAME}"
-    mkdir "${SYNC_LOCAL}/${TEMP}/${SYNC_FOLDER}"
-    dl    "${SYNC_LOCAL}/${TEMP}/${SYNC_FOLDER}"         "${SYNC_DEST}/"                     "${SYNC_TYPE_SERVICE}"
-    rmdir "${SYNC_LOCAL}/${TEMP}/${SYNC_FOLDER}"
+    mkdir "${SYNC_LOCAL}/${SYNC_TEMP}/${SYNC_FOLDER}"
+    dl    "${SYNC_LOCAL}/${SYNC_TEMP}/${SYNC_FOLDER}"         "${SYNC_DEST}/"                     "${SYNC_TYPE_SERVICE}"
+    rmdir "${SYNC_LOCAL}/${SYNC_TEMP}/${SYNC_FOLDER}"
     dl    "${SYNC_LOCAL}/${SYNC_FOLDER}/${MY_NAME}" "${SYNC_DEST}/${SYNC_FOLDER}/${MY_NAME}" "${SYNC_TYPE_SERVICE}"
 }
 
@@ -343,15 +370,15 @@ init_temp()
 {
     # echo "Инициализация папки временных файлов"
     if ! [ "=${SYNC_LOCAL}=" = "==" ]; then
-        if ! [ "=${TEMP}=" = "==" ]; then
+        if ! [ "=${SYNC_TEMP}=" = "==" ]; then
             # shellcheck disable=SC2115 # проверка сделана двумя строками выше
-            rm -R "${SYNC_LOCAL}/${TEMP}"
-            mkdir "${SYNC_LOCAL}/${TEMP}"
-            # ls -R1 "${SYNC_LOCAL}/${TEMP}/"
+            rm -R "${SYNC_LOCAL}/${SYNC_TEMP}"
+            mkdir "${SYNC_LOCAL}/${SYNC_TEMP}"
+            # ls -R1 "${SYNC_LOCAL}/${SYNC_TEMP}/"
             # echo "-END-"
         else
-            printf "Папка TEMP [%s] не установлена.\n\n" \
-                 "Это критическая ошибка." "${TEMP}"
+            printf "Папка SYNC_TEMP [%s] не установлена.\n\n" \
+                 "Это критическая ошибка." "${SYNC_TEMP}"
             exit 1
         fi
     else
@@ -394,22 +421,22 @@ set_status_all()
     
     echo "Установка для всех статуса синхронизации в \"${STATUS_ALL}\" (\"${STATUS_MY}\")"
     init_temp
-    dl "${SYNC_DEST}/${SYNC_FOLDER}/${USER_PREFIX}*"  "${SYNC_LOCAL}/${TEMP}/" "${SYNC_TYPE_SERVICE}"
-    # ls -1 "${SYNC_LOCAL}/${TEMP}/"
+    dl "${SYNC_DEST}/${SYNC_FOLDER}/${USER_PREFIX}*"  "${SYNC_LOCAL}/${SYNC_TEMP}/" "${SYNC_TYPE_SERVICE}"
+    # ls -1 "${SYNC_LOCAL}/${SYNC_TEMP}/"
     # echo "----"
     # shellcheck disable=SC2045
-    for F in $(ls -1 "${SYNC_LOCAL}/${TEMP}/" 2>/dev/null); do
+    for F in $(ls -1 "${SYNC_LOCAL}/${SYNC_TEMP}/" 2>/dev/null); do
         if [ "$F" = "${MY_NAME}" ]; then
             STATUS="${STATUS_MY}"
         else
             STATUS="${STATUS_ALL}"
         fi
         echo "$F set status to ${STATUS}"
-        echo "${STATUS}" > "${SYNC_LOCAL}/${TEMP}/$F"
-        # echo "[dl \"${SYNC_LOCAL}/${TEMP}/$F\" \"${SYNC_DEST}/${SYNC_FOLDER}/$F\" \"${SYNC_TYPE_SERVICE}\"]"
-        dl "${SYNC_LOCAL}/${TEMP}/$F" "${SYNC_DEST}/${SYNC_FOLDER}/$F" "${SYNC_TYPE_SERVICE}"
+        echo "${STATUS}" > "${SYNC_LOCAL}/${SYNC_TEMP}/$F"
+        # echo "[dl \"${SYNC_LOCAL}/${SYNC_TEMP}/$F\" \"${SYNC_DEST}/${SYNC_FOLDER}/$F\" \"${SYNC_TYPE_SERVICE}\"]"
+        dl "${SYNC_LOCAL}/${SYNC_TEMP}/$F" "${SYNC_DEST}/${SYNC_FOLDER}/$F" "${SYNC_TYPE_SERVICE}"
     done
-    # dl "${SYNC_LOCAL}/${TEMP}/${USER_PREFIX}*" "${SYNC_DEST}/${SYNC_FOLDER}/" "${SYNC_TYPE_SERVICE}"
+    # dl "${SYNC_LOCAL}/${SYNC_TEMP}/${USER_PREFIX}*" "${SYNC_DEST}/${SYNC_FOLDER}/" "${SYNC_TYPE_SERVICE}"
     init_temp
 }
 
@@ -493,21 +520,124 @@ if  [ "=$1=" = "=${SYNC_CMD_CLOUD_UP_INIT}=" ]; then
     printf   ". Ок\n"
 
     echo "Создаём в папке tmp копию того, что нужно отправить на сервер"
-    mkdir -p "${SYNC_LOCAL}/${TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}" || { echo "Не удалось создать папку [${SYNC_LOCAL}/${TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}]"; exit 1; }
+    mkdir -p "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}" || { echo "Не удалось создать папку [${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}]"; exit 1; }
     # shellcheck disable=SC2059
     printf   "Копируем [${REMOTE_FOLDER}/${SYNC_FOLDER}/${MY_NAME}]"
-    cp       "${SYNC_LOCAL}/${SYNC_FOLDER}/${MY_NAME}" "${SYNC_LOCAL}/${TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
+    cp       "${SYNC_LOCAL}/${SYNC_FOLDER}/${MY_NAME}" "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
     # shellcheck disable=SC2059
     printf   ", [${REMOTE_FOLDER}/${SYNC_DEST_FILE}]"
-    cp       "${SYNC_LOCAL}/${SYNC_DEST_FILE}"         "${SYNC_LOCAL}/${TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
+    cp       "${SYNC_LOCAL}/${SYNC_DEST_FILE}"         "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
     # shellcheck disable=SC2059
     printf   ", [${REMOTE_FOLDER}/${SYNC_EXCLUDES}]"
-    cp       "${SYNC_LOCAL}/${SYNC_EXCLUDES}"          "${SYNC_LOCAL}/${TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
+    cp       "${SYNC_LOCAL}/${SYNC_EXCLUDES}"          "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
     printf   ". Ок\n"
 
     echo     "Копируем локальную временную папку [${REMOTE_FOLDER}]"
     echo     "На сервер в папаку                 [${REMOTE_PATH}]"
-    dl "${SYNC_LOCAL}/${TEMP}/${REMOTE_FOLDER}" "${REMOTE_PATH}" "${SYNC_TYPE_SERVICE}"
+    dl "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}" "${REMOTE_PATH}" "${SYNC_TYPE_SERVICE}"
+    init_temp
+
+    echo     "Добавляем папаку в список массовой синхронизации [${SYNC_ALL_LIST_FILE}]..."
+    if [ -f "${APP_PATH}/${SYNC_ALL_LIST_FILE}" ]; then
+
+        if ( grep -q "${SYNC_LOCAL}" "${APP_PATH}/${SYNC_ALL_LIST_FILE}" ); 
+        then 
+            echo "В файле [${APP_PATH}/${SYNC_ALL_LIST_FILE}] строка [${SYNC_LOCAL}] есть."; 
+            echo "Ничего не делаем."; 
+        else 
+            echo "В файле [${APP_PATH}/${SYNC_ALL_LIST_FILE}] НЕТ строки [${SYNC_LOCAL}]."; 
+            printf "Добавляем..."; 
+            {
+                echo ""
+                echo "#"
+                echo "# Добавлено $(date)"
+                echo "# пользователем ${USER}"
+                echo "# коммандой ${SYNC_CMD_CLOUD_UP_INIT}"
+                echo "#"
+                echo "\"${SYNC_LOCAL}\" \"$(basename "${SYNC_LOCAL}")\""
+            }  >> "${APP_PATH}/${SYNC_ALL_LIST_FILE}"
+            printf "...Ok.\n"; 
+        fi
+    else
+        echo "Файла [${SYNC_ALL_LIST_FILE}] нет."
+    fi
+
+    echo   "${LINE_TOP_}"
+    echo   "${LINE_FREE}"
+         # "║                                                                               ║"
+    printf "║     Проверьте, пожалуста, файл исключений для синхронизации.                  ║\n" 
+    printf "║     Исправьте его для ваших потребностей.                                     ║\n" 
+    printf "║     За тем, выполните комманду синхронизации для отправки данных на сервер    ║\n" 
+    echo   "${LINE_FREE}"
+    printf "║     Файл исключений         : [%-45s] ║\n" "${SYNC_LOCAL}/${SYNC_EXCLUDES}"
+    echo   "${LINE_FREE}"
+    printf "║     Выполните синхронизацию : [%-45s] ║\n" "${APP_NAME} ."
+    echo   "${LINE_FREE}"
+    echo   "${LINE_BOT_}"
+
+    # echo     "Проводим обычную синхронихацию [${SYNC_CMD_REGULAR}]"
+    # sync_regular "${SYNC_LOCAL}/" "${SYNC_DEST}/"
+
+    exit 0;
+fi
+
+
+
+#
+# Создание локального репозитория из копии на сервере
+#
+if  [ "=$1=" = "=${SYNC_CMD_CLOUD_DL_INIT}_=" ]; then
+
+    REMOTE_PATH=$(dirname "$3")
+    REMOTE_FOLDER=$(basename "$3")
+    SYNC_DEST="${REMOTE_PATH}/${REMOTE_FOLDER}"
+    {
+        PREV_DIR=$(pwd)
+        cd "${SYNC_LOCAL}" || { echo "Не удалось перейти в папаку [${SYNC_LOCAL}]"; exit 1; }
+        SYNC_LOCAL=$(pwd)
+        LOCAL_PATH=$(dirname "${SYNC_LOCAL}")
+        LOCAL_FOLDER=$(basename "${SYNC_LOCAL}")
+        cd "${PREV_DIR}" || { echo "Не удалось перейти в папаку [${PREV_DIR}]"; exit 1; }
+    }
+
+    echo   "${LINE_TOP_}"
+    echo   "${LINE_FREE}"
+    printf "║             Комманда : %-54s ║\n" "${SYNC_CMD_CLOUD_UP_INIT}"
+    printf "║      Локальная папка : %-54s ║\n" "${SYNC_LOCAL}"
+    printf "║         Путь к папке : %-54s ║\n" "${LOCAL_PATH}"
+    printf "║           Сама папка : %-54s ║\n" "${LOCAL_FOLDER}"
+    printf "║ Облачные папки         %-54s ║\n" " "
+    printf "║  Путь к папке (SYNC) : %-54s ║\n" "${REMOTE_PATH}"
+    printf "║           Сама папка : %-54s ║\n" "${REMOTE_FOLDER}"
+    echo   "${LINE_FREE}"
+    echo   "${LINE_BOT_}"
+
+    echo     "Создание папки синхронизатора ${SYNC_LOCAL}/${SYNC_FOLDER}"
+    mkdir -p "${SYNC_LOCAL}/${SYNC_FOLDER}" || { echo "Не удалось создать папку синхронизатора [${SYNC_LOCAL}/${SYNC_FOLDER}]"; exit 1; }
+    printf   "Создание файла [%s]" "${MY_NAME}"
+    echo     "${SYNC_CMD_REGULAR}" > "${SYNC_LOCAL}/${SYNC_FOLDER}/${MY_NAME}"
+    printf   ", [%s]" "${SYNC_DEST_FILE}"
+    echo     "${REMOTE_PATH}/${REMOTE_FOLDER}" > "${SYNC_LOCAL}/${SYNC_DEST_FILE}"
+    printf   ", [%s]" "${SYNC_EXCLUDES}"
+    echo     "${EXCLUDES}" > "${SYNC_LOCAL}/${SYNC_EXCLUDES}"
+    printf   ". Ок\n"
+
+    echo "Создаём в папке tmp копию того, что нужно отправить на сервер"
+    mkdir -p "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}" || { echo "Не удалось создать папку [${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}]"; exit 1; }
+    # shellcheck disable=SC2059
+    printf   "Копируем [${REMOTE_FOLDER}/${SYNC_FOLDER}/${MY_NAME}]"
+    cp       "${SYNC_LOCAL}/${SYNC_FOLDER}/${MY_NAME}" "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
+    # shellcheck disable=SC2059
+    printf   ", [${REMOTE_FOLDER}/${SYNC_DEST_FILE}]"
+    cp       "${SYNC_LOCAL}/${SYNC_DEST_FILE}"         "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
+    # shellcheck disable=SC2059
+    printf   ", [${REMOTE_FOLDER}/${SYNC_EXCLUDES}]"
+    cp       "${SYNC_LOCAL}/${SYNC_EXCLUDES}"          "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
+    printf   ". Ок\n"
+
+    echo     "Копируем локальную временную папку [${REMOTE_FOLDER}]"
+    echo     "На сервер в папаку                 [${REMOTE_PATH}]"
+    dl "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}" "${REMOTE_PATH}" "${SYNC_TYPE_SERVICE}"
     init_temp
 
     echo     "Добавляем папаку в список массовой синхронизации [${SYNC_ALL_LIST_FILE}]..."
@@ -614,7 +744,7 @@ printf "║ LOCAL:    │ %-64s  ║\n" "${SYNC_LOCAL}"
 printf "║ DEST:     │ %-64s  ║\n" "${SYNC_DEST}"
 printf "║ LOG (opt) │ %-64s  ║\n" "${LOG_FILE}"
 printf "║ EXCLUDES: │ %-64s  ║\n" "${SYNC_EXCLUDES}"
-printf "║ TEMP:     │ %-64s  ║\n" "${TEMP}"
+printf "║ TEMP:     │ %-64s  ║\n" "${SYNC_TEMP}"
 echo   "╚═══════════╧═══════════════════════════════════════════════════════════════════╝"
 
 
@@ -634,12 +764,12 @@ fi
 echo "Считывание статуса синхронизации"
 init_temp
 dl  "${SYNC_DEST}/${SYNC_FOLDER}/${MY_NAME}" \
-    "${SYNC_LOCAL}/${TEMP}/" \
+    "${SYNC_LOCAL}/${SYNC_TEMP}/" \
     "${SYNC_TYPE_SERVICE}"
 
-if [ ! -f "${SYNC_LOCAL}/${TEMP}/${MY_NAME}" ]; then
+if [ ! -f "${SYNC_LOCAL}/${SYNC_TEMP}/${MY_NAME}" ]; then
 
-    echo "Файла ${SYNC_LOCAL}/${TEMP}/${MY_NAME} нет"
+    echo "Файла ${SYNC_LOCAL}/${SYNC_TEMP}/${MY_NAME} нет"
     echo "Предположительно его нет на удаленном хосте"
     echo "Регистрируем компьютер на удаленном хосте"
     init_local "${SYNC_CMD_DL_INIT}"
@@ -659,11 +789,11 @@ if [ ! -f "${SYNC_LOCAL}/${TEMP}/${MY_NAME}" ]; then
 else
 
     printf "Скачали файл статуса сервера: "
-    cat "${SYNC_LOCAL}/${TEMP}/${MY_NAME}"
+    cat "${SYNC_LOCAL}/${SYNC_TEMP}/${MY_NAME}"
 
-    SYNC_STATUS=$(cat "${SYNC_LOCAL}/${TEMP}/${MY_NAME}")
-    if [ -f "${SYNC_LOCAL}/${TEMP}/${MY_NAME}" ]; then
-        rm "${SYNC_LOCAL}/${TEMP}/${MY_NAME}"
+    SYNC_STATUS=$(cat "${SYNC_LOCAL}/${SYNC_TEMP}/${MY_NAME}")
+    if [ -f "${SYNC_LOCAL}/${SYNC_TEMP}/${MY_NAME}" ]; then
+        rm "${SYNC_LOCAL}/${SYNC_TEMP}/${MY_NAME}"
     fi
 
 fi
