@@ -2,11 +2,12 @@
 
 
 
-VERSION="1.3.2-beta (2025-05-08)"
+VERSION="1.3.3-beta (2025-05-17)"
 LAST_CHANGES="\
 v1.3.0 (2025-04-21): Дабавлена комманда автоматического создания удалённого репозитория командой CLOUD_UP_INIT
 v1.3.1 (2025-04-22): Дабавлено дефолтное наполнние файла excludes
 v1.3.2 (2025-05-08): Добавлена команда LOG для показа логов работы скрипта
+v1.3.3 (2025-05-17): Добавлен параметр SHOW_DEST показывает облачные пути
 "
 
 APP_NAME=$(basename "$0")
@@ -57,8 +58,9 @@ SYNC_CMD_DL_INIT="DL_INIT"
 SYNC_CMD_PAUSE="PAUSE"
 SYNC_CMD_UP_EDIT="UP_EDIT"
 SYNC_CMD_UNPAUSE="UNPAUSE"
-SYNC_CMD_CLOUD_UP_INIT="CLOUD_UP_INIT" # Создаёт sync-репозиторий из текущей папки. 
-SYNC_CMD_CLOUD_DL_INIT="CLOUD_DL_INIT" # Загружает sync-репозиторий с сервера в текущую папку. Близко к DL_INIT
+SYNC_CMD_CLOUD_UP_INIT="CLOUD_UP_INIT"  # Создаёт sync-репозиторий из текущей папки. 
+SYNC_CMD_CLOUD_DL_INIT="CLOUD_DL_INIT"  # Загружает sync-репозиторий с сервера в текущую папку. Близко к DL_INIT
+SHOW_DEST="SHOW_DEST"                   # Показывает dest-строку
 
 # типы обращения к серверу. 
 # По разному копируют файлы
@@ -73,7 +75,10 @@ SYNC_LOCAL="$1"
 #
 # Команда синхронизации
 #
-CMD="$2"
+if  [ "$#" -ge 2 ] ; 
+    then CMD="$2"
+    else CMD="${SYNC_CMD_REGULAR}"; 
+fi
 
 
 
@@ -110,15 +115,19 @@ fi
 # то папка берётся текущая
 # или ищется выше по дереву каталогов
 #
-if      [ "=$1=" = "=${SYNC_CMD_REGULAR}=" ] \
-     || [ "=$1=" = "=${SYNC_CMD_UP}=" ] \
-     || [ "=$1=" = "=${SYNC_CMD_DL}=" ] \
-     || [ "=$1=" = "=${SYNC_CMD_UP_INIT}=" ] \
-     || [ "=$1=" = "=${SYNC_CMD_DL_INIT}=" ] \
-     || [ "=$1=" = "=${SYNC_CMD_PAUSE}=" ] \
-     || [ "=$1=" = "=${SYNC_CMD_UP_EDIT}=" ] \
-     || [ "=$1=" = "=${SYNC_CMD_UNPAUSE}=" ]; then
-
+if  [ "$#" -ge 1 ] && \
+    { 
+           [ "$1" = "${SYNC_CMD_REGULAR}" ] \
+        || [ "$1" = "${SYNC_CMD_UP}" ] \
+        || [ "$1" = "${SYNC_CMD_DL}" ] \
+        || [ "$1" = "${SYNC_CMD_UP_INIT}" ] \
+        || [ "$1" = "${SYNC_CMD_DL_INIT}" ] \
+        || [ "$1" = "${SYNC_CMD_PAUSE}" ] \
+        || [ "$1" = "${SYNC_CMD_UP_EDIT}" ] \
+        || [ "$1" = "${SYNC_CMD_UNPAUSE}" ] \
+        || [ "$1" = "${SHOW_DEST}" ]; 
+    }
+then
 
     CMD="$1"
     echo   "${LINE_TOP_}"
@@ -162,22 +171,24 @@ fi
 
 
 #
-# Проверка, если первым аргументом указан SYNC_CMD_CLOUD_*,
+# Проверка, если первым аргументом указан CLOUD_*,
 # то ...
 #
-if  [ "=$1=" = "=${SYNC_CMD_CLOUD_UP_INIT}=" ]; then
-
-
-    if [ "=$3=" = "==" ]; then
-        echo "Не указан удалённый (облачный) путь для сохранения локальной папаки"
-        echo "см ${APP_NAME} --help"
+if  [ "$#" -ge 1 ] && 
+    [ "$1" = "${SYNC_CMD_CLOUD_UP_INIT}" ]; 
+then
+    if [ "$#" -lt 2 ]; then
+        echo "Не указана локальная папака для сохранения на сервере"
+        echo "см. ${APP_NAME} --help"
+        echo "Раздел ${APP_NAME} ${SYNC_CMD_CLOUD_UP_INIT}..."
         echo ""
         exit 2; # 2 — Неправильный синтаксис. Обычно возникает, когда команда была вызвана с неправильными аргументами.
     fi
 
-    if [ "=$2=" = "==" ]; then
-        echo "Не указана локальная папака для сохранения на сервере"
-        echo "см ${APP_NAME} --help"
+    if [ "$#" -lt 3 ]; then
+        echo "Не указан удалённый (облачный) путь для сохранения локальной папаки"
+        echo "см. ${APP_NAME} --help"
+        echo "Раздел ${APP_NAME} ${SYNC_CMD_CLOUD_UP_INIT}..."
         echo ""
         exit 2; # 2 — Неправильный синтаксис. Обычно возникает, когда команда была вызвана с неправильными аргументами.
     fi
@@ -236,6 +247,9 @@ sync_help()
     ${SYNC_CMD_UNPAUSE} -- Обмен данными не происходит. \n\
                Для всех хостов устанавливается статус ${SYNC_CMD_DL_INIT} \n\n\
 
+    ${SHOW_DEST} -- Показать строку \"dest\".\n\
+               Это адрес размещения папаки на сервере.\n\n\
+
     ${APP_NAME} ${SYNC_CMD_CLOUD_UP_INIT} <локальная_папка> <удалённая_папка> \n\
                -- Создаёт sync-репозиторий из указанной папки.\n\
                <локальная_папка> -- полный или относительный путь к папке, или \".\"\n\
@@ -251,6 +265,9 @@ sync_help()
 
     ${APP_NAME} ${SHOW_LOG} <количество_строк>
                    Показыват указанное количство строк из лог-файла. По умолчанию количечтво = ${LOG_COUNT_ROWS}
+
+    --help | -h       Показать эту подсказку
+    --version | -v    Показать версию
 
     ## Пока не реализовано
     ${APP_NAME} ${SYNC_CMD_CLOUD_DL_INIT} <локальная_папка> <удалённая_папка> \n\
@@ -451,17 +468,26 @@ set_status_all()
 
 
 
-if [ "=$1=" = "==" ] || [ "$1" = "--help" ] || [ "$2" = "--help" ] || [ "$1" = "-h" ] || [ "$2" = "-h" ] || [ "$1" = "-H" ] || [ "$2" = "-H" ]; then
-
+if  [ "$#" -eq 0 ] || \
+    {
+        [ "$#" -ge 1 ] && \
+        {   
+            [ "$1" = "--help" ] || [ "$1" = "-h" ] || \
+            [ "$2" = "--help" ] || [ "$2" = "-h" ]; 
+        }
+    }
+then
     sync_help
     exit 0
-
 fi
 
 
 
-if [ "=$1=" = "=-v=" ] || [ "$1" = "--version" ] || [ "$1" = "-V" ] || [ "$1" = "--VERSION" ]; then
-
+if  [ "$#" -ge 1 ] && \
+    {   
+        [ "$1" = "--version" ] || [ "$1" = "-v" ]; 
+    }
+then
     echo "Version: ${VERSION}"
     echo "Скрипт: ${APP_NAME}"
     echo "Папка размещения: ${APP_PATH}"
@@ -469,7 +495,6 @@ if [ "=$1=" = "=-v=" ] || [ "$1" = "--version" ] || [ "$1" = "-V" ] || [ "$1" = 
     echo "Последние изменения:"
     echo "${LAST_CHANGES}"
     exit 0;
-
 fi
 
 
@@ -483,8 +508,8 @@ logger -p info "${LOG_PREFIX} CMD: $0 $1 $2 $3 $4 $5 $6 $7 $8 $9"
 #
 # Создание репозитория на сервере из указанной локальной папки
 #
-if  [ "=$1=" = "=${SYNC_CMD_CLOUD_UP_INIT}=" ]; then
-
+if  [ "$#" -ge 1 ] && [ "$1" = "${SYNC_CMD_CLOUD_UP_INIT}" ]; 
+then
     REMOTE_PATH=$(dirname "$3")
     REMOTE_FOLDER=$(basename "$3")
     SYNC_DEST="${REMOTE_PATH}/${REMOTE_FOLDER}"
@@ -586,101 +611,9 @@ fi
 #
 # Создание локального репозитория из копии на сервере
 #
-if  [ "=$1=" = "=${SYNC_CMD_CLOUD_DL_INIT}_=" ]; then
-
-    REMOTE_PATH=$(dirname "$3")
-    REMOTE_FOLDER=$(basename "$3")
-    SYNC_DEST="${REMOTE_PATH}/${REMOTE_FOLDER}"
-    {
-        PREV_DIR=$(pwd)
-        cd "${SYNC_LOCAL}" || { echo "Не удалось перейти в папаку [${SYNC_LOCAL}]"; exit 1; }
-        SYNC_LOCAL=$(pwd)
-        LOCAL_PATH=$(dirname "${SYNC_LOCAL}")
-        LOCAL_FOLDER=$(basename "${SYNC_LOCAL}")
-        cd "${PREV_DIR}" || { echo "Не удалось перейти в папаку [${PREV_DIR}]"; exit 1; }
-    }
-
-    echo   "${LINE_TOP_}"
-    echo   "${LINE_FREE}"
-    printf "║             Комманда : %-54s ║\n" "${SYNC_CMD_CLOUD_UP_INIT}"
-    printf "║      Локальная папка : %-54s ║\n" "${SYNC_LOCAL}"
-    printf "║         Путь к папке : %-54s ║\n" "${LOCAL_PATH}"
-    printf "║           Сама папка : %-54s ║\n" "${LOCAL_FOLDER}"
-    printf "║ Облачные папки         %-54s ║\n" " "
-    printf "║  Путь к папке (SYNC) : %-54s ║\n" "${REMOTE_PATH}"
-    printf "║           Сама папка : %-54s ║\n" "${REMOTE_FOLDER}"
-    echo   "${LINE_FREE}"
-    echo   "${LINE_BOT_}"
-
-    echo     "Создание папки синхронизатора ${SYNC_LOCAL}/${SYNC_FOLDER}"
-    mkdir -p "${SYNC_LOCAL}/${SYNC_FOLDER}" || { echo "Не удалось создать папку синхронизатора [${SYNC_LOCAL}/${SYNC_FOLDER}]"; exit 1; }
-    printf   "Создание файла [%s]" "${MY_NAME}"
-    echo     "${SYNC_CMD_REGULAR}" > "${SYNC_LOCAL}/${SYNC_FOLDER}/${MY_NAME}"
-    printf   ", [%s]" "${SYNC_DEST_FILE}"
-    echo     "${REMOTE_PATH}/${REMOTE_FOLDER}" > "${SYNC_LOCAL}/${SYNC_DEST_FILE}"
-    printf   ", [%s]" "${SYNC_EXCLUDES}"
-    echo     "${EXCLUDES}" > "${SYNC_LOCAL}/${SYNC_EXCLUDES}"
-    printf   ". Ок\n"
-
-    echo "Создаём в папке tmp копию того, что нужно отправить на сервер"
-    mkdir -p "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}" || { echo "Не удалось создать папку [${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}]"; exit 1; }
-    # shellcheck disable=SC2059
-    printf   "Копируем [${REMOTE_FOLDER}/${SYNC_FOLDER}/${MY_NAME}]"
-    cp       "${SYNC_LOCAL}/${SYNC_FOLDER}/${MY_NAME}" "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
-    # shellcheck disable=SC2059
-    printf   ", [${REMOTE_FOLDER}/${SYNC_DEST_FILE}]"
-    cp       "${SYNC_LOCAL}/${SYNC_DEST_FILE}"         "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
-    # shellcheck disable=SC2059
-    printf   ", [${REMOTE_FOLDER}/${SYNC_EXCLUDES}]"
-    cp       "${SYNC_LOCAL}/${SYNC_EXCLUDES}"          "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}/${SYNC_FOLDER}/"
-    printf   ". Ок\n"
-
-    echo     "Копируем локальную временную папку [${REMOTE_FOLDER}]"
-    echo     "На сервер в папаку                 [${REMOTE_PATH}]"
-    dl "${SYNC_LOCAL}/${SYNC_TEMP}/${REMOTE_FOLDER}" "${REMOTE_PATH}" "${SYNC_TYPE_SERVICE}"
-    init_temp
-
-    echo     "Добавляем папаку в список массовой синхронизации [${SYNC_ALL_LIST_FILE}]..."
-    if [ -f "${APP_PATH}/${SYNC_ALL_LIST_FILE}" ]; then
-
-        if ( grep -q "${SYNC_LOCAL}" "${APP_PATH}/${SYNC_ALL_LIST_FILE}" ); 
-        then 
-            echo "В файле [${APP_PATH}/${SYNC_ALL_LIST_FILE}] строка [${SYNC_LOCAL}] есть."; 
-            echo "Ничего не делаем."; 
-        else 
-            echo "В файле [${APP_PATH}/${SYNC_ALL_LIST_FILE}] НЕТ строки [${SYNC_LOCAL}]."; 
-            printf "Добавляем..."; 
-            {
-                echo ""
-                echo "#"
-                echo "# Добавлено $(date)"
-                echo "# пользователем ${USER}"
-                echo "# коммандой ${SYNC_CMD_CLOUD_UP_INIT}"
-                echo "#"
-                echo "\"${SYNC_LOCAL}\" \"$(basename "${SYNC_LOCAL}")\""
-            }  >> "${APP_PATH}/${SYNC_ALL_LIST_FILE}"
-            printf "...Ok.\n"; 
-        fi
-    else
-        echo "Файла [${SYNC_ALL_LIST_FILE}] нет."
-    fi
-
-    echo   "${LINE_TOP_}"
-    echo   "${LINE_FREE}"
-         # "║                                                                               ║"
-    printf "║     Проверьте, пожалуста, файл исключений для синхронизации.                  ║\n" 
-    printf "║     Исправьте его для ваших потребностей.                                     ║\n" 
-    printf "║     За тем, выполните комманду синхронизации для отправки данных на сервер    ║\n" 
-    echo   "${LINE_FREE}"
-    printf "║     Файл исключений         : [%-45s] ║\n" "${SYNC_LOCAL}/${SYNC_EXCLUDES}"
-    echo   "${LINE_FREE}"
-    printf "║     Выполните синхронизацию : [%-45s] ║\n" "${APP_NAME} ."
-    echo   "${LINE_FREE}"
-    echo   "${LINE_BOT_}"
-
-    # echo     "Проводим обычную синхронихацию [${SYNC_CMD_REGULAR}]"
-    # sync_regular "${SYNC_LOCAL}/" "${SYNC_DEST}/"
-
+if  [ "$#" -ge 1 ] && [ "$1" = "${SYNC_CMD_CLOUD_DL_INIT}" ]; 
+then
+    echo "Не реализовано."
     exit 0;
 fi
 
@@ -695,13 +628,10 @@ fi
 
 
 
-echo "Проверка служебной папки синхронизатора \"${SYNC_LOCAL}/${SYNC_FOLDER}\"..."
-if [ -d "${SYNC_LOCAL}/${SYNC_FOLDER}" ]; then
-
-    echo "Служебная папка синхронизатора есть"
-
-else
-
+#
+#  "Проверка служебной папки синхронизатора \"${SYNC_LOCAL}/${SYNC_FOLDER}\"..."
+#
+if [ ! -d "${SYNC_LOCAL}/${SYNC_FOLDER}" ]; then
     echo   "╔═══════════════════════════════════════════════════════════════════════════════╗"
     echo   "║                                                                               ║"
     echo   "║      ОЩИБКА: Служебной папки синхронизатора нет.                              ║"
@@ -714,9 +644,7 @@ else
     echo   "║              ЭТО КРИТИЧЕСКАЯ ОШИБКА.                                          ║"
     echo   "║                                                                               ║"
     echo   "╚═══════════════════════════════════════════════════════════════════════════════╝"
-    
     exit 1
-
 fi
 
 if [ -f "${SYNC_LOCAL}/${SYNC_DEST_FILE}" ]; then
@@ -737,6 +665,19 @@ else
     exit 1
 
 fi
+
+
+
+#
+#  Показать строку dest
+#
+if  [ "=$CMD=" = "=${SHOW_DEST}=" ];
+then
+    echo "${SYNC_DEST}"
+    exit 0;
+fi
+
+
 
 echo   "╔═══════════╤═══════════════════════════════════════════════════════════════════╗"
 printf "║ MY:       │ %-64s  ║\n" "${MY_NAME}"
@@ -1022,7 +963,7 @@ else
     echo    "Не известная команда пользователя ${CMD}."
     echo    "см ${APP_NAME} --help"
     echo    ""
-    sync_help
+    # sync_help
     exit 2; # 2 — Неправильный синтаксис. Обычно возникает, когда команда была вызвана с неправильными аргументами.
 
 fi

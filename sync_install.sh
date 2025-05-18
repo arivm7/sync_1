@@ -105,8 +105,8 @@ scripts_to="${HOME}/bin"
 # Список имен файлов .desktop для копирования
 # shellcheck disable=SC2034
 icon_files=(
-sync_1.icon.svg
-sync_1_up.icon.svg
+img/sync_1.icon.svg
+img/sync_1_up.icon.svg
 )
 # папка назначения для копирования скриптов
 icon_to="${HOME}/bin/icons"
