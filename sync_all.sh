@@ -1,40 +1,33 @@
 #!/usr/bin/env bash
-set -e
-set -u
-set -o pipefail
+set -euo pipefail
 
 
-VERSION="1.3.0 (2025-05-17)"
+
+APP_TITLE="Скрипт массовой сихронизации. Часть пакета персональной синхронизации sync_1"
+VERSION="1.3.1 (2025-05-23)"
 LAST_CHANGES="\
 v1.2.6 (2025-04-25): Рефакторинг run_one_dir()
 v1.2.7 (2025-05-08): Добавлен параметр LOG для показа логов работы скрипта
 v1.3.0 (2025-05-17): Добавлен параметр SHOW_DEST показывает облачные пути
+v1.3.1 (2025-05-23): Починка того, что сломалось после рефактринга sync_1
 "
 
 APP_NAME=$(basename "$0")
 APP_PATH=$(dirname "$0")
 
 SYNC_ALL_LIST_FILE="sync_all.list"  # Конфиг-файл со списком папок для синхронизации
-SYNC1="${HOME}/bin/sync_1.sh"       # скрипт синхронизатор
-WAIT_END=5                          # seconds для просмотря результатв синхронизации
+SYNC1="sync_1.sh"                   # скрипт синхронизатор
+
 LOG_PREFIX="SYNC_ALL: "             # Используется для префикса в системном логе
 LOG_COUNT_ROWS="20"                 # Количество строк по умолчанию при просмотре логов
 VERB_MODE=true                      # Подробный вывод всех действий. Если false -- то "тихий режим"
-
-# Переходим в папку, где находится скрипт, чтобы правильно видеть конфиг-файл
-SCRIPT_PATH=$(realpath "$0")
-SCRIPT_DIR=$(dirname "${SCRIPT_PATH}")
-cd "${SCRIPT_DIR}" || { 
-    ERR="По какой-то причине переход в папку размещения скрипла [${SCRIPT_DIR}] не удался."
-    logger -p info "${LOG_PREFIX} ERR: ${ERR}"
-    echo "${ERR}" ; 
-    exit 1; 
-} 
+WAIT_END=5                          # seconds для просмотря результатв синхронизации
 
 
 
 # Поддерживаемые пользовательские комманды
 SHOW_LOG="LOG"
+SHOW_DEST="SHOW_DEST"                   # Показывает dest-строку
 SYNC_CMD_REGULAR="REGULAR"
 SYNC_CMD_UP="UP"
 SYNC_CMD_DL="DL"
@@ -43,61 +36,68 @@ SYNC_CMD_DL_INIT="DL_INIT"
 SYNC_CMD_PAUSE="PAUSE"
 SYNC_CMD_UP_EDIT="UP_EDIT"
 SYNC_CMD_UNPAUSE="UNPAUSE"
-SHOW_DEST="SHOW_DEST"                   # Показывает dest-строку
+
+
+
+log_info() {
+    logger -p info "${LOG_PREFIX} $*"
+}
 
 
 
 print_help()
 {
-    echo "" 
-    echo "Скрипт: ${APP_NAME} Версия: ${VERSION}"
-    echo "Папка размещения: \"${APP_PATH}\""
-    echo "" 
-    echo "Скрипт массовой синхронизации списка папок." 
-    echo "Вспомогательный скрипт из комплекта персональной синхронизации sync_1." 
-    echo "Подробности о работе см. основной скрипт \"sync_1.sh --help\"" 
-    echo "" 
-    echo "Список файлов для синхронизации берётся из файла ${SYNC_ALL_LIST_FILE}" 
-    echo "в котором просто перечислены папки для синхронизации " 
-    echo "и не обязательное текстовое сообщение-баннер для оформления лога синхронизации." 
-    echo ""
-    echo "Использование:"
-    echo "    ${APP_NAME} [${SYNC_CMD_REGULAR}|${SYNC_CMD_UP}|${SYNC_CMD_DL}|${SYNC_CMD_UP_INIT}|${SYNC_CMD_DL_INIT}|${SYNC_CMD_PAUSE}|${SYNC_CMD_UP_EDIT}|${SYNC_CMD_UNPAUSE}|${SHOW_DEST}] "
-    echo "    "
-    echo "    ${SYNC_CMD_REGULAR} -- действие по умолчанию. Указывать не обязательно."
-    echo "               Запись данных на сервер (${SYNC_CMD_UP}) и скачивание данных с сервера (${SYNC_CMD_DL}) "
-    echo "               без удаления расхождений."
-    echo "    ${SYNC_CMD_UP}      -- Запись данных на сервер без удаления."
-    echo "    ${SYNC_CMD_DL}      -- Чтение данных с сервера без удаления."
-    echo "    ${SYNC_CMD_DL_INIT} -- Загрузка данных с сервера на локальный хост "
-    echo "               с *удалением* расхождений на локальном хосте."
-    echo "    $SYNC_CMD_UP_INIT -- Запись данных с локального хоста на сервер "
-    echo "               с *удалением* расхождений на сервере, и установка для всех хостов "
-    echo "               статуса ${SYNC_CMD_DL_INIT} для обязательной загрузки изменений."
-    echo "    ${SYNC_CMD_PAUSE}   -- Обмен данными не происходит. "
-    echo "               Режим для изменений данных на самом сервере. "
-    echo "               Никаая комманда с серера ничего не скачивает. "
-    echo "               Для изменения файлов на сервере в этом режиме используется комманда ${SYNC_CMD_UP_EDIT}. "
-    echo "    ${SYNC_CMD_UP_EDIT} -- Отправляет данные на сервер с удалением расхождений на стороне сервера."
-    echo "               Работает только если статус сервера ${SYNC_CMD_PAUSE}. "
-    echo "               Работает как ${SYNC_CMD_UP_INIT} только НЕ изменяет статус синхронизации для клиентов."
-    echo "    ${SYNC_CMD_UNPAUSE} -- Обмен данными не происходит. "
-    echo "               Для всех хостов устанавливается статус ${SYNC_CMD_DL_INIT} "
-    echo "    ${SHOW_DEST} -- Обмен данными не происходит. "
-    echo "               Показать строку dest -- адрес папки на сервере. "
-    echo ""
-    echo "    ${APP_NAME} ${SHOW_LOG} <количество_строк>"
-    echo "               Показыват указанное количство строк из лог-файла. По умолчанию количечтво = ${LOG_COUNT_ROWS}"
-    echo ""
-    echo "Последние изменения"
-    echo "${LAST_CHANGES}"
-    echo ""
+cat << EOF
+${APP_TITLE}
+Скрипт: ${APP_NAME} Версия: ${VERSION}
+Папка размещения: "${APP_PATH}"
+
+Скрипт массовой синхронизации списка папок.
+Вспомогательный скрипт из комплекта персональной синхронизации sync_1.
+Подробности о работе см. основной скрипт "sync_1.sh --help"
+
+Список файлов для синхронизации берётся из файла ${SYNC_ALL_LIST_FILE}
+в котором просто перечислены папки для синхронизации 
+и не обязательное текстовое сообщение-баннер для оформления лога синхронизации.
+
+Использование:
+    ${APP_NAME} [${SYNC_CMD_REGULAR}|${SYNC_CMD_UP}|${SYNC_CMD_DL}|${SYNC_CMD_UP_INIT}|${SYNC_CMD_DL_INIT}|${SYNC_CMD_PAUSE}|${SYNC_CMD_UP_EDIT}|${SYNC_CMD_UNPAUSE}|${SHOW_DEST}] 
+
+    ${SYNC_CMD_REGULAR} -- действие по умолчанию. Указывать не обязательно.
+               Запись данных на сервер (${SYNC_CMD_UP}) и скачивание данных с сервера (${SYNC_CMD_DL}) 
+               без удаления расхождений.
+    ${SYNC_CMD_UP}      -- Запись данных на сервер без удаления.
+    ${SYNC_CMD_DL}      -- Чтение данных с сервера без удаления.
+    ${SYNC_CMD_DL_INIT} -- Загрузка данных с сервера на локальный хост 
+               с *удалением* расхождений на локальном хосте.
+    $SYNC_CMD_UP_INIT -- Запись данных с локального хоста на сервер 
+               с *удалением* расхождений на сервере, и установка для всех хостов 
+               статуса ${SYNC_CMD_DL_INIT} для обязательной загрузки изменений.
+    ${SYNC_CMD_PAUSE}   -- Обмен данными не происходит. 
+               Режим для изменений данных на самом сервере. 
+               Никаая комманда с серера ничего не скачивает. 
+               Для изменения файлов на сервере в этом режиме используется комманда ${SYNC_CMD_UP_EDIT}. 
+    ${SYNC_CMD_UP_EDIT} -- Отправляет данные на сервер с удалением расхождений на стороне сервера.
+               Работает только если статус сервера ${SYNC_CMD_PAUSE}. 
+               Работает как ${SYNC_CMD_UP_INIT} только НЕ изменяет статус синхронизации для клиентов.
+    ${SYNC_CMD_UNPAUSE} -- Обмен данными не происходит. 
+               Для всех хостов устанавливается статус ${SYNC_CMD_DL_INIT} 
+    ${SHOW_DEST} -- Обмен данными не происходит. 
+               Показать строку dest -- адрес папки на сервере. 
+
+    ${APP_NAME} ${SHOW_LOG} <количество_строк>
+               Показыват указанное количство строк из лог-файла. По умолчанию количечтво = ${LOG_COUNT_ROWS}
+
+Последние изменения
+${LAST_CHANGES}
+EOF
 }
 
 
 
 print_version()
 {
+    echo "${APP_TITLE}"
     echo "Скрипт       : ${APP_NAME}"
     echo "Версия       : ${VERSION}"
     echo "Путь скрипта : \"${APP_PATH}\""
@@ -108,45 +108,87 @@ print_version()
 
 
 
-print_log()
-{
-    if  [ "$#" -ge 1 ] ;
-    then
-        local LOG_COUNT="$1"
+print_log() {
+    local count="${1:-$LOG_COUNT_ROWS}"
+    journalctl -p info --since today | grep -- "$LOG_PREFIX" || true | tail -n "$count"
+}
+
+
+#
+# Запуск синхронизации для указанной папки.
+# С предварительной проверкой наличия самой папки, 
+# и наличия в ней папки синхронизатора .sync
+# с проверкой наличия подпапки `.sync` и файлов dest/excludes
+#
+run_one_dir() {
+    local dir="${1:?Папка синхронизации не указана}"
+    local sync_dir="$dir/.sync"
+    local dest_file="$sync_dir/dest"
+    local excludes_file="$sync_dir/excludes"
+
+    [[ -f "$dest_file" ]] || { echo "Нет файла [$dest_file]"; return 1; }
+    [[ -f "$excludes_file" ]] || { echo "Нет файла [$excludes_file]"; return 1; }
+
+    if [[ -z "${USER_CMD:-}" ]]; then
+        "$SYNC1" "$dir" < /dev/null
     else
-        local LOG_COUNT="${LOG_COUNT_ROWS}"
+        "$SYNC1" "$dir" "$USER_CMD" < /dev/null
     fi
-    journalctl -p info --since today | grep "$LOG_PREFIX" | tail -n "${LOG_COUNT}"
 }
 
 
 
-if  [ "$#" -ge 1 ] && { [ "$1" = "--help" ] || [ "$1" = "-h" ] || [ "$1" = "-H" ]; } then
-    print_help
-    exit 0
-fi
+#
+# Предварительная информация перед запуском синхронизации 
+# для визуального разделения результатов команд синхронизации.
+# Информационный баннер перез запуском синхронизации
+#
+run_banner() {
+    local folder="${1:?}"
+    local banner="${2:-$folder}"
 
-
-
-if  [ "$#" -ge 1 ] && { [ "$1" = "--version" ] || [ "$1" = "-v" ] || [ "$1" = "-V" ]; } then
-    print_version
-    exit 0
-fi
-
-
-
-if  [ "$#" -ge 1 ] && [ "=$1=" = "=${SHOW_LOG}=" ] ;
-then
-    if  [ "$#" -ge 2 ] ;
-    then
-        print_log "$2"
-    else
-        print_log
+    if [[ "$VERB_MODE" == true ]]; then
+        printf "\n\n\n\n"
+        echo "$banner"
+        command -v figlet &>/dev/null && figlet -k "$banner" -f big
     fi
-    exit 0
-fi
+
+    run_one_dir "$folder"
+}
 
 
+
+# Возвращает пары folder + banner для синхронизации
+parse_sync_list() {
+    local file="$1"
+    [[ -f "$file" ]] || {
+        echo "Файл $file не найден"
+        return 1
+    }
+
+    while IFS= read -r line_raw || [[ -n "$line_raw" ]]; do
+        [[ -z "$line_raw" || "$line_raw" =~ ^[[:space:]]*# ]] && continue
+
+        eval "set -- $line_raw"  # корректно обрабатывает кавычки
+        echo "$1|${2:-$1}"
+    done < "$file"
+}
+
+
+
+#
+#
+#
+# ========== ПАРСИНГ АРГУМЕНТОВ ==========
+#
+#
+#
+
+
+
+[[ "${1:-}" =~ ^-h|--help$ ]] && { print_help; exit 0; }
+
+[[ "${1:-}" =~ ^-v|--version$ ]] && { print_version; exit 0; }
 
 #
 # Пользовательская комманда из списка выше
@@ -158,118 +200,51 @@ fi
 #       то файлы удаляться на всех клинтских компьютерах при следующей синхронизации. 
 #       Хотя, так-же функционируют все системы синхронизации.
 # 
-USER_CMD=""
-
-if  [ "$#" -ge 1 ];
-then
-    USER_CMD="$1"
-    if  [ ! "=$1=" = "=${SHOW_LOG}="         ] && \
-        [ ! "=$1=" = "=${SYNC_CMD_REGULAR}=" ] && \
-        [ ! "=$1=" = "=${SYNC_CMD_UP}="      ] && \
-        [ ! "=$1=" = "=${SYNC_CMD_DL}="      ] && \
-        [ ! "=$1=" = "=${SYNC_CMD_UP_INIT}=" ] && \
-        [ ! "=$1=" = "=${SYNC_CMD_DL_INIT}=" ] && \
-        [ ! "=$1=" = "=${SYNC_CMD_PAUSE}="   ] && \
-        [ ! "=$1=" = "=${SYNC_CMD_UP_EDIT}=" ] && \
-        [ ! "=$1=" = "=${SYNC_CMD_UNPAUSE}=" ] && \
-        [ ! "=$1=" = "=${SHOW_DEST}=" ];
-    then
-        ERR="${LOG_PREFIX} ERROR: Пользовательская комманда [${USER_CMD}] не верна."
-        logger -p info "${ERR}"
-        echo "${ERR}"
-        exit 2;
-    fi
-fi
+USER_CMD="${1:-}"
 
 
 
-#
-#  Если нужно вывести только dest-строки, то использовать "тихий" режим
-#
-if [ "${USER_CMD}" = "${SHOW_DEST}" ]; then
-    VERB_MODE=false
-fi
+# Переходим в папку, где находится скрипт, чтобы правильно видеть конфиг-файл
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+cd "${SCRIPT_DIR}" || { 
+    ERR="По какой-то причине переход в папку размещения скрипла [${SCRIPT_DIR}] не удался."
+    logger -p info "${LOG_PREFIX} ERR: ${ERR}"
+    echo "${ERR}" ; 
+    exit 1; 
+} 
 
 
 
-#
-# Запуск синхронизации для указанной папки.
-# С предварительной проверкой наличия самой папки, 
-# и наличия в ней папки синхронизатора .sync
-#
-run_one_dir()
-{
-    if  [ "$#" -ge 1 ];
-    then
-        # $1 -- папка для синхронизации
-        local P="$1"
-        # Проверка наличия файла [${P}/.sync/dest]
-        if [ -f "${P}/.sync/dest" ]; then
-            # Проверка наличия файла [${P}/.sync/excludes]
-            if [ -f "${P}/.sync/excludes" ]; then
-                # echo "Стартуем..."
-                $SYNC1 "${P}" "${USER_CMD}"
-                # echo "...закончили"
-            else
-                echo "Нет файла [${P}/.sync/excludes]"
-                echo "см.: sync_1.sh --help"
-            fi
-        else
-            echo "Нет файла [${P}/.sync/dest]."
-            echo "см.: sync_1.sh --help"
-        fi
-    else
-        local ERR="[run_one_dir()] Не указана папка синхронизации"
-        echo "$ERR"
-        logger -p info "${LOG_PREFIX} $ERR"
-        exit 1;
-    fi
-}
+case "$USER_CMD" in
+    "$SHOW_LOG") print_log "${2:-}"; exit 0 ;;
+
+    #  Если нужно вывести только dest-строки, то использовать "тихий" режим
+    "$SHOW_DEST") VERB_MODE=false ;;
+
+    ""|"$SYNC_CMD_REGULAR"|"$SYNC_CMD_UP"|"$SYNC_CMD_DL"|"$SYNC_CMD_UP_INIT"|"$SYNC_CMD_DL_INIT"|"$SYNC_CMD_PAUSE"|"$SYNC_CMD_UP_EDIT"|"$SYNC_CMD_UNPAUSE") ;;  # допустимые команды
+
+    *)
+        log_info "Неверная команда: [$USER_CMD]"
+        echo "Неверная команда: [$USER_CMD]"
+        exit 2
+        ;;
+esac
 
 
-
-#
-# Предварительная информация перед запуском синхронизации 
-# для визуального разделения результатов команд синхронизации.
-# Информационный баннер перез запуском синхронизации
-#
-run_banner()
-{
-    if  [ "$#" -ge 1 ];
-    then
-        # $1 -- Папка синхронизации
-        local FOLDER="$1"
-        # $2 -- Строка-баннер для красивого отображени на экране
-        if [ -z "${2:-}" ]; then
-            local BANNER="${FOLDER}"
-        else
-            local BANNER="${2:-}"
-        fi
-        
-        if ${VERB_MODE}; then 
-            printf "\n\n\n\n"
-            echo   "${BANNER}"
-            figlet -k "${BANNER}" -f "big"
-        fi
-        run_one_dir "${FOLDER}"
-    else
-        local ERR="[run_banner()] Не указана папка синхронизации"
-        echo "$ERR"
-        logger -p info "${LOG_PREFIX} $ERR"
-        exit 1;
-    fi
-}
-
-
-
-logger -p info "${LOG_PREFIX} BEG: $(date)"
-logger -p info "${LOG_PREFIX} VER: ${VERSION}"
+log_info "BEG: $(date)"
+log_info "VER: $VERSION"
 # ${*@Q} — цитирует каждый аргумент как Bash-литерал (например, --opt="some val" → '--opt=some val'), безопасно для логов.
-logger -p info "${LOG_PREFIX} CMD: $0 ${*@Q}" 
-if ${VERB_MODE}; then
-echo "${APP_NAME} VERSION ${VERSION}"
-fi
+log_info "CMD: $0 ${*@Q}"
+[[ "$VERB_MODE" == true ]] && echo "$APP_NAME VERSION $VERSION"
 
+
+# ========== ОСНОВНОЙ ЦИКЛ ОБРАБОТКИ ФАЙЛОВ ==========
+
+
+[[ -f "$SYNC_ALL_LIST_FILE" ]] || {
+    echo "Файл $SYNC_ALL_LIST_FILE не найден"
+    exit 1
+}
 
 
 ##  =================================================  ##
@@ -277,19 +252,9 @@ fi
 ##  Собственно, тут перебор синхронизируемых папок     ##
 ##                                                     ##
 
-while read -r line_raw; 
-do
-    # Проверяем, есть ли комментарий в строке
-    if ! [[ $line_raw == *"#"* ]]; then
-        # Если комментария нет, то
-        # Используем eval для обработки кавычек
-        eval "set -- $line_raw"
-        if [ "$#" -ge 1 ]; then
-            # Если параметр есть, то запускаем
-            run_banner "$1" "$2"
-        fi
-    fi
-done < ${SYNC_ALL_LIST_FILE}
+while IFS="|" read -r folder banner; do
+    run_banner "$folder" "$banner"
+done < <(parse_sync_list "$SYNC_ALL_LIST_FILE")
 
 ##                                                     ##
 ##  конец списка синхронизации                         ##
@@ -299,10 +264,12 @@ done < ${SYNC_ALL_LIST_FILE}
 
 
 logger -p info "${LOG_PREFIX} END: $(date)"
-if ${VERB_MODE}; then
-    echo "===================="
-    echo "Все выполнено. Окно можно закрыть."
-    echo "Автоматическое закрытие через [${WAIT_END}] сек."
-    echo "===================="
+[[ "$VERB_MODE" == true ]] && {
+    echo    "╔═══════════════════════════════════════════════════════════════════════════════╗"
+    echo    "║                                                                               ║"
+    echo    "║                     Все выполнено. Окно можно закрыть.                        ║"
+    echo    "║                     Автоматическое закрытие через [${WAIT_END}] сек.                    ║"
+    echo    "║                                                                               ║"
+    echo    "╚═══════════════════════════════════════════════════════════════════════════════╝"
     sleep ${WAIT_END}
-fi
+};

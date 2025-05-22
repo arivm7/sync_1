@@ -22,5 +22,5 @@ alias s1_up_edit='s1 UP_EDIT'
 alias s1_all='sync_all.sh'
 
 # Авдополнение в командной строке
-complete -W "REGULAR UP DL DL_INIT UP_INIT PAUSE UP_EDIT UNPAUSE LOG SHOW_DEST CLOUD_UP_INIT CLOUD_DL_INIT" s1 sync_1.sh
-complete -W "REGULAR UP DL DL_INIT UP_INIT PAUSE UP_EDIT UNPAUSE LOG SHOW_DEST" s1_all sync_all.sh
+complete -W "REGULAR UP DL DL_INIT UP_INIT PAUSE UP_EDIT UNPAUSE LOG SHOW_DEST CLOUD_UP_INIT CLOUD_DL_INIT --usage -u --help -h --version -v" s1     sync_1.sh
+complete -W "REGULAR UP DL DL_INIT UP_INIT PAUSE UP_EDIT UNPAUSE LOG SHOW_DEST                             --usage -u --help -h --version -v" s1_all sync_all.sh

@@ -5,6 +5,7 @@ set -o pipefail
 
 
 
+APP_TITLE="Инсталятор персонального синхронизатора sync_1"
 VERSION="1.3.0 (2025-04-29)"
 APP_NAME=$(basename "$0")
 LAST_CHANGES="\
@@ -23,6 +24,7 @@ APP_FIGLET="figlet"; PKG_FIGLET="figlet";
 print_help()
 {
     echo "" 
+    echo "${APP_TITLE}" 
     echo "${APP_NAME} -- Версия ${VERSION}" 
     echo "Скрипт установки в систему рабочих скриптов, иконок и .desktop-файлов." 
     echo "Вспомогательный скрипт из комплекта персональной синхронизации sync_1." 
@@ -73,9 +75,10 @@ install_if_not()
 
 
 if  [ "$#" -ge 1 ] && \
-    { \
-        [ "$1" = "--help" ] || [ "$1" = "-h" ] || [ "$1" = "-H" ] || \
-        [ "$1" = "--version" ] || [ "$1" = "-v" ] || [ "$1" = "-V" ]; \
+    { 
+        [ "$1" = "--help" ] || [ "$1" = "-h" ] || \
+        [ "$1" = "--usage" ] || [ "$1" = "-u" ] || \
+        [ "$1" = "--version" ] || [ "$1" = "-v" ]; 
     }; 
 then
     print_help
