@@ -1,3 +1,4 @@
 .idea
 *.kate-swp
 *.swp
+.sync
