@@ -27,5 +27,5 @@
 ##
 ## Синхронизация папок сохраний для игр
 ##
-"${HOME}/Games/SC"    "SC saves"
-"${HOME}/Games/SC2"   "SC2 saves"
+#"${HOME}/Games/SC"    "SC saves"
+#"${HOME}/Games/SC2"   "SC2 saves"

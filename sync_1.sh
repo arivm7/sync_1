@@ -3,9 +3,6 @@
 
 
 
-APP_TITLE="Скрипт индивидуальной синхронизации"
-APP_NAME=$(basename "$0")
-APP_PATH=$(dirname "$0")
 VERSION="1.4.1-beta (2025-05-26)"
 LAST_CHANGES="\
 v1.3.0 (2025-04-21): Добавлена команда автоматического создания удалённого репозитория командой CLOUD_UP_INIT
@@ -15,6 +12,26 @@ v1.3.3 (2025-05-17): Добавлен параметр SHOW_DEST показыв�
 v1.4.0 (2025-05-22): Рефакторинг и массовые проверки.
 v1.4.1 (2025-05-26): Исправление ошибок диспетчеризации команд
 "
+
+
+
+APP_TITLE="Скрипт индивидуальной синхронизации"
+APP_NAME=$(basename "$0")                                   # Полное имя скрипта, включая расширение
+APP_PATH=$(cd "$(dirname "$0")" && pwd)                     # Путь размещения исполняемого скрипта
+# shellcheck disable=SC2034
+FILE_NAME="${APP_NAME%.*}"                                  # Убираем расширение (если есть), например ".sh"
+# shellcheck disable=SC2034
+SCRIPT_NAME=$(basename "${BASH_SOURCE[0]}")                 # Полное имя [вложенного] скрипта, включая расширение
+# shellcheck disable=SC2034
+SCRIPT_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)   # Путь размещения [вложенного] скрипта
+
+CONFIG_DIRNAME="sync"
+CONFIG_PATH="${XDG_CONFIG_HOME:-${HOME}/.config}/${CONFIG_DIRNAME:+${CONFIG_DIRNAME}}"
+# CONFIG_FILE="${XDG_CONFIG_HOME:-${HOME}/.config}/${CONFIG_DIRNAME:+${CONFIG_DIRNAME}/}${FILE_NAME}.conf"
+# shellcheck disable=SC2034
+CONFIG_FILE="${CONFIG_PATH}/${FILE_NAME}.conf"
+
+
 
 DIR_SYNC=".sync"                            # папка параметров синхронизации
 FILE_EXCLUDES="${DIR_SYNC}/excludes"        # Файл исключений для rsync
@@ -147,7 +164,7 @@ exit_with_msg() {
         msg="${msg}\nПодсказка по использованию: ${COLOR_USAGE}${APP_NAME} --usage|-u${COLOR_OFF}"
     fi
     echo -e "${msg}"
-    exit "$num"
+    exit "${num}"
 }
 
 
@@ -508,15 +525,6 @@ init_transfer_commands() {
         --exclude="${LOG_FILE}"
         --rsh="ssh -p ${SSH_PORT}"
     )
-
-    # CMD_TRANSFER_DATA="rsync \
-    #     --log-file=\"${DIR_LOCAL}/${LOG_FILE}\" \
-    #     --include=\"${FILE_EXCLUDES}\" \
-    #     --include=\"${FILE_DEST}\" \
-    #     --exclude-from=\"${DIR_LOCAL}/${FILE_EXCLUDES}\" \
-    #     -azhtpErl --progress -u \
-    #     --exclude=\"${DIR_SYNC}/*\" \
-    #     --exclude=\"${LOG_FILE}\""
 }
 
 

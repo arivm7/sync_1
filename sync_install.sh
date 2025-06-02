@@ -11,6 +11,13 @@ v1.3.0 (2025-04-29): Добавление установки зависимос�
 v1.3.1 (2025-05-25): Переделывание установки зависимостей
 "
 
+
+
+SYNC_CONFIG_DIRNAME="sync"
+SYNC_CONFIG_PATH="${XDG_CONFIG_HOME:-${HOME}/.config}/${SYNC_CONFIG_DIRNAME:+${SYNC_CONFIG_DIRNAME}}"
+
+
+
 echo "SYNC INSTALLER VER: ${VERSION}"
 
 
@@ -184,6 +191,7 @@ sync_all.sh
 sync_1_aliases.sh
 sync_backuper.sh
 )
+
 # папка назначения для копирования скриптов
 scripts_to="${HOME}/bin"
 
@@ -195,6 +203,7 @@ icon_files=(
 img/sync_1.icon.svg
 img/sync_1_up.icon.svg
 )
+
 # папка назначения для копирования скриптов
 icon_to="${HOME}/bin/icons"
 
@@ -204,6 +213,9 @@ icon_to="${HOME}/bin/icons"
 SYNC_ALL_LIST_FILE="sync_all.list"
 SYNC_BACKUPER_LIST="sync_backuper.list"
 
+# папка назначения для копирования конфигов
+config_to="${SYNC_CONFIG_PATH}"
+
 
 # Список имен файлов .desktop для копирования
 # shellcheck disable=SC2034
@@ -211,6 +223,7 @@ desktop_files=(
 sync_regular.desktop
 sync_up.desktop
 )
+
 # папка назначения для копирования скриптов
 desktop_to="${HOME}/bin"
 
@@ -218,6 +231,7 @@ desktop_to="${HOME}/bin"
 
 # конфиг-файл, к которому нужно подключить алиасы
 BASHRC="${HOME}/.bashrc"
+
 # Файл алиасов и автодополнений
 ALIASES="${scripts_to}/sync_1_aliases.sh"
 
@@ -283,8 +297,8 @@ install_config_file() {
     echo ""
 }
 
-install_config_file "${scripts_to}" "${SYNC_ALL_LIST_FILE}"
-install_config_file "${scripts_to}" "${SYNC_BACKUPER_LIST}"
+install_config_file "${config_to}" "${SYNC_ALL_LIST_FILE}"
+install_config_file "${config_to}" "${SYNC_BACKUPER_LIST}"
 
 
 echo ""
