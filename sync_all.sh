@@ -22,33 +22,54 @@ fi
 
 
 APP_TITLE="Скрипт массовой сихронизации. Часть пакета персональной синхронизации sync_1"
-VERSION="1.3.1 (2025-05-23)"
+VERSION="1.3.2 (2025-06-02)"
 LAST_CHANGES="\
 v1.2.6 (2025-04-25): Рефакторинг run_one_dir()
 v1.2.7 (2025-05-08): Добавлен параметр LOG для показа логов работы скрипта
 v1.3.0 (2025-05-17): Добавлен параметр SHOW_DEST показывает облачные пути
 v1.3.1 (2025-05-23): Починка того, что сломалось после рефактринга sync_1
+v1.3.2 (2025-06-02): Перенос конфигов в системную пользовательскую папаку конфигов
 "
 
-APP_NAME=$(basename "$0")
-APP_PATH=$(dirname "$0")
 
-SYNC_ALL_LIST_FILE="sync_all.list"  # Конфиг-файл со списком папок для синхронизации
-SYNC1="sync_1.sh"                   # скрипт синхронизатор
+
+APP_NAME=$(basename "$0")                                   # Полное имя скрипта, включая расширение
+APP_PATH=$(cd "$(dirname "$0")" && pwd)                     # Путь размещения исполняемого скрипта
+# shellcheck disable=SC2034
+FILE_NAME="${APP_NAME%.*}"                                  # Убираем расширение (если есть), например ".sh"
+# shellcheck disable=SC2034
+SCRIPT_NAME=$(basename "${BASH_SOURCE[0]}")                 # Полное имя [вложенного] скрипта, включая расширение
+# shellcheck disable=SC2034
+SCRIPT_PATH=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)   # Путь размещения [вложенного] скрипта
+
+CONFIG_DIRNAME="sync"
+CONFIG_PATH="${XDG_CONFIG_HOME:-${HOME}/.config}/${CONFIG_DIRNAME:+${CONFIG_DIRNAME}}"
+# CONFIG_FILE="${XDG_CONFIG_HOME:-${HOME}/.config}/${CONFIG_DIRNAME:+${CONFIG_DIRNAME}/}${FILE_NAME}.conf"
+CONFIG_FILE="${CONFIG_PATH}/${FILE_NAME}.conf"
+
+SYNC_ALL_LIST_FILE="${CONFIG_PATH}/${FILE_NAME}.list"       # Конфиг-файл со списком папок для синхронизации
+SYNC1="sync_1.sh"                                           # скрипт синхронизатор
+
+# Программа-редактор для редактирования конфиг-файла и списка папаок для копирования
+# (без пробелов в пути/и/названии)
+EDITOR="nano"
+
+
 
 LOG_PREFIX="SYNC_ALL: "             # Используется для префикса в системном логе
 LOG_COUNT_ROWS="20"                 # Количество строк по умолчанию при просмотре логов
 VERB_MODE=$IS_CRON                  # Подробный вывод всех действий. Если false -- то "тихий режим"
 WAIT_END=5                          # seconds для просмотря результатв синхронизации
 
-
-
+COLOR_USAGE="\e[1;32m"              # Терминальный цвет для вывода переменной статуса
+COLOR_ERROR="\e[0;31m"              # Терминальный цвет для вывода ошибок
+COLOR_INFO="\e[0;34m"               # Терминальный цвет для вывода информации (об ошибке или причине выхода)
+# COLOR_FILENAME="\e[1;36m"         # Терминальный цвет для вывода имён файлов
+COLOR_OFF="\e[0m"                   # Терминальный цвет для сброса цвета
 
 
 
 # Поддерживаемые пользовательские комманды
-SHOW_LOG="LOG"
-SHOW_DEST="SHOW_DEST"                   # Показывает dest-строку
 SYNC_CMD_REGULAR="REGULAR"
 SYNC_CMD_UP="UP"
 SYNC_CMD_DL="DL"
@@ -57,15 +78,32 @@ SYNC_CMD_DL_INIT="DL_INIT"
 SYNC_CMD_PAUSE="PAUSE"
 SYNC_CMD_UP_EDIT="UP_EDIT"
 SYNC_CMD_UNPAUSE="UNPAUSE"
+SHOW_LOG="LOG"                      # Показывает последние строки системного лога
+SHOW_DEST="SHOW_DEST"               # Показывает dest-строку
 
 
 
-log_info() {
-    logger -p info "${LOG_PREFIX} $*"
-}
+# Список допустимых команд
+VALID_COMMANDS=(
+    # Синхронизируют
+    "${SYNC_CMD_REGULAR}"
+    "${SYNC_CMD_UP}"
+    "${SYNC_CMD_DL}"
+    "${SYNC_CMD_UP_INIT}"
+    "${SYNC_CMD_DL_INIT}"
+    "${SYNC_CMD_PAUSE}"
+    "${SYNC_CMD_UP_EDIT}"
+    "${SYNC_CMD_UNPAUSE}"
+    # Показывают
+    "${SHOW_LOG}"
+    "${SHOW_DEST}"
+)
 
 
 
+#
+#  Полная справка по скрипту
+#
 print_help()
 {
 cat << EOF
@@ -82,29 +120,38 @@ ${APP_TITLE}
 и не обязательное текстовое сообщение-баннер для оформления лога синхронизации.
 
 Использование:
-    ${APP_NAME} [${SYNC_CMD_REGULAR}|${SYNC_CMD_UP}|${SYNC_CMD_DL}|${SYNC_CMD_UP_INIT}|${SYNC_CMD_DL_INIT}|${SYNC_CMD_PAUSE}|${SYNC_CMD_UP_EDIT}|${SYNC_CMD_UNPAUSE}|${SHOW_DEST}] 
+    ${APP_NAME}  [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:0:5}"); echo "${str//|/ | }";) ]
+                 [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:5:3}"); echo "${str//|/ | }";) ]
+                 [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:8}");  echo "${str//|/ | }";) ]
+                 По умолчанию: ${SYNC_CMD_REGULAR}
 
-    ${SYNC_CMD_REGULAR} -- действие по умолчанию. Указывать не обязательно.
-               Запись данных на сервер (${SYNC_CMD_UP}) и скачивание данных с сервера (${SYNC_CMD_DL}) 
-               без удаления расхождений.
-    ${SYNC_CMD_UP}      -- Запись данных на сервер без удаления.
-    ${SYNC_CMD_DL}      -- Чтение данных с сервера без удаления.
-    ${SYNC_CMD_DL_INIT} -- Загрузка данных с сервера на локальный хост 
-               с *удалением* расхождений на локальном хосте.
-    $SYNC_CMD_UP_INIT -- Запись данных с локального хоста на сервер 
-               с *удалением* расхождений на сервере, и установка для всех хостов 
-               статуса ${SYNC_CMD_DL_INIT} для обязательной загрузки изменений.
-    ${SYNC_CMD_PAUSE}   -- Обмен данными не происходит. 
-               Режим для изменений данных на самом сервере. 
-               Никаая комманда с серера ничего не скачивает. 
-               Для изменения файлов на сервере в этом режиме используется комманда ${SYNC_CMD_UP_EDIT}. 
-    ${SYNC_CMD_UP_EDIT} -- Отправляет данные на сервер с удалением расхождений на стороне сервера.
-               Работает только если статус сервера ${SYNC_CMD_PAUSE}. 
-               Работает как ${SYNC_CMD_UP_INIT} только НЕ изменяет статус синхронизации для клиентов.
-    ${SYNC_CMD_UNPAUSE} -- Обмен данными не происходит. 
-               Для всех хостов устанавливается статус ${SYNC_CMD_DL_INIT} 
+    ${SYNC_CMD_REGULAR}   -- действие по умолчанию. Указывать не обязательно.
+                 Запись данных на сервер (${SYNC_CMD_UP}) и скачивание данных с сервера (${SYNC_CMD_DL}) 
+                 без удаления расхождений.
+    ${SYNC_CMD_UP}        -- Запись данных на сервер без удаления.
+    ${SYNC_CMD_DL}        -- Чтение данных с сервера без удаления.
+    ${SYNC_CMD_DL_INIT}   -- Загрузка данных с сервера на локальный хост 
+                 с *удалением* расхождений на локальном хосте.
+    $SYNC_CMD_UP_INIT   -- Запись данных с локального хоста на сервер 
+                 с *удалением* расхождений на сервере, и установка для всех хостов 
+                 статуса ${SYNC_CMD_DL_INIT} для обязательной загрузки изменений.
+    ${SYNC_CMD_PAUSE}     -- Обмен данными не происходит. 
+                 Режим для изменений данных на самом сервере. 
+                 Никаая комманда с серера ничего не скачивает. 
+                 Для изменения файлов на сервере в этом режиме используется комманда ${SYNC_CMD_UP_EDIT}. 
+    ${SYNC_CMD_UP_EDIT}   -- Отправляет данные на сервер с удалением расхождений на стороне сервера.
+                 Работает только если статус сервера ${SYNC_CMD_PAUSE}. 
+                 Работает как ${SYNC_CMD_UP_INIT} только НЕ изменяет статус синхронизации для клиентов.
+    ${SYNC_CMD_UNPAUSE}   -- Обмен данными не происходит. 
+                 Для всех хостов устанавливается статус ${SYNC_CMD_DL_INIT} 
     ${SHOW_DEST} -- Обмен данными не происходит. 
-               Показать строку dest -- адрес папки на сервере. 
+                 Показать строку dest -- адрес папки на сервере. 
+
+    --help    | -h      Это описание
+    --usage   | -u      Краткая справка по использованию
+    --version | -v      Версия скрипта
+    --edit-conf         Редактирование конфига
+    --edit-list         Редактирование списка для бакапа
 
     ${APP_NAME} ${SHOW_LOG} <количество_строк>
                Показыват указанное количство строк из лог-файла. По умолчанию количечтво = ${LOG_COUNT_ROWS}
@@ -131,6 +178,29 @@ EOF
 
 
 
+#
+#  Кратная справка по использованию
+#
+print_usage()
+{
+cat << EOF
+${APP_TITLE}
+Использование:
+    ${APP_NAME}  [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:0:5}"); echo "${str//|/ | }";) ]
+                 [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:5:3}"); echo "${str//|/ | }";) ]
+                 [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:8}");  echo "${str//|/ | }";) ]
+                 По умолчанию: ${SYNC_CMD_REGULAR}
+                 [ --help | -h | --usage | -u | --version | -v ]
+                 [ --edit-conf | --edit-list ]
+                 [ ${SHOW_LOG} <количество_строк> ]
+EOF
+}
+
+
+
+#
+#  Вывод версии скрипта
+#
 print_version()
 {
     echo "${APP_TITLE}"
@@ -144,10 +214,52 @@ print_version()
 
 
 
+#
+#  Обёртка для логирования
+#
+log_info() {
+    logger -p info "${LOG_PREFIX} $*"
+}
+
+
+
+#
+#  Вывод последних сообщений этого скрипта из системного лога
+#
 print_log() {
     local count="${1:-$LOG_COUNT_ROWS}"
     journalctl -p info --since today | grep -- "$LOG_PREFIX" || true | tail -n "$count"
 }
+
+
+
+#
+# Вывод строки и выход из скрипта
+# $1 -- сообщение
+# $2 -- код ошибки. По умолчанию "1"
+#
+exit_with_msg() {
+    local msg="${1:?exit_with_msg строка не передана или пуста. Смотреть вызывающую функцию.}"
+    local num="${2:-1}"
+    case "${num}" in
+    1)
+        logger -p error "${LOG_PREFIX} ERR: ${msg}"
+        msg="${COLOR_ERROR}${msg}${COLOR_OFF}"
+        ;;
+    2)
+        logger -p error "${LOG_PREFIX} ERR: ${msg}"
+        msg="${COLOR_ERROR}${msg}${COLOR_OFF}"
+        msg="${msg}\nПодсказка по использованию: ${COLOR_USAGE}${APP_NAME} --usage|-u${COLOR_OFF}"
+        ;;
+    0|*)
+        logger -p info "${LOG_PREFIX} ERR: ${msg}"
+        msg="${COLOR_INFO}${msg}${COLOR_OFF}"
+        ;;
+    esac
+    echo -e "${msg}"
+    exit "$num"
+}
+
 
 
 #
@@ -175,9 +287,9 @@ run_one_dir() {
 
 
 #
-# Предварительная информация перед запуском синхронизации 
-# для визуального разделения результатов команд синхронизации.
-# Информационный баннер перез запуском синхронизации
+#  Предварительная информация перед запуском синхронизации 
+#  для визуального разделения результатов команд синхронизации.
+#  Информационный баннер перез запуском синхронизации
 #
 run_banner() {
     local folder="${1:?}"
@@ -194,7 +306,9 @@ run_banner() {
 
 
 
-# Возвращает пары folder + banner для синхронизации
+#
+#  Возвращает пары folder + banner для синхронизации
+#
 parse_sync_list() {
     local file="$1"
     [[ -f "$file" ]] || {
@@ -213,13 +327,15 @@ parse_sync_list() {
 
 
 #
-# 📌 Способы перемещения курсора:
-# Escape-код	Описание
-# \033[A	вверх на 1 строку
-# \033[B	вниз на 1 строку
-# \033[C	вправо на 1 символ
-# \033[D	влево на 1 символ
-# \033[F	в начало предыдущей строки (эквивалент \033[A\r)
+#  Вывод информационного баннера и таймера завершения скрипта
+#
+#     📌 Способы перемещения курсора:
+#     Escape-код	Описание
+#     \033[A	вверх на 1 строку
+#     \033[B	вниз на 1 строку
+#     \033[C	вправо на 1 символ
+#     \033[D	влево на 1 символ
+#     \033[F	в начало предыдущей строки (эквивалент \033[A\r)
 #
 wait_end() {
     local seconds="${1:-${WAIT_END}}"
@@ -253,10 +369,32 @@ wait_end() {
 #
 
 
+case "${1:-}" in
+  -h|--help)
+    print_help
+    exit 0
+    ;;
+  -u|--usage)
+    print_usage
+    exit 0
+    ;;
+  -v|--version)
+    print_version
+    exit 0
+    ;;
+  --edit-conf)
+    echo "Редактирование конфига: ${CONFIG_FILE}"
+    exec "${EDITOR}" "${CONFIG_FILE}"
+    exit 0
+    ;;
+  --edit-list)
+    echo "Редактирование списка: ${SYNC_ALL_LIST_FILE}"
+    exec "${EDITOR}" "${SYNC_ALL_LIST_FILE}"
+    exit 0
+    ;;
+esac
 
-[[ "${1:-}" =~ ^-h|--help$ ]] && { print_help; exit 0; }
 
-[[ "${1:-}" =~ ^-v|--version$ ]] && { print_version; exit 0; }
 
 #
 # Пользовательская комманда из списка выше
@@ -272,13 +410,10 @@ USER_CMD="${1:-}"
 
 
 
-# Переходим в папку, где находится скрипт, чтобы правильно видеть конфиг-файл
-SCRIPT_DIR=$(dirname "$(realpath "$0")")
-cd "${SCRIPT_DIR}" || { 
-    ERR="По какой-то причине переход в папку размещения скрипла [${SCRIPT_DIR}] не удался."
-    logger -p info "${LOG_PREFIX} ERR: ${ERR}"
-    echo "${ERR}" ; 
-    exit 1; 
+# Переходим в папку, где находится конфиг, чтобы правильно видеть конфиг-файл
+CONFIG_PATH=$(dirname "$(realpath "$0")")
+cd "${CONFIG_PATH}" || { 
+    exit_with_msg "По какой-то причине переход в папку размещения скрипла [${CONFIG_PATH}] не удался." 1;
 } 
 
 
@@ -289,12 +424,13 @@ case "$USER_CMD" in
     #  Если нужно вывести только dest-строки, то использовать "тихий" режим
     "$SHOW_DEST") VERB_MODE=false ;;
 
-    ""|"$SYNC_CMD_REGULAR"|"$SYNC_CMD_UP"|"$SYNC_CMD_DL"|"$SYNC_CMD_UP_INIT"|"$SYNC_CMD_DL_INIT"|"$SYNC_CMD_PAUSE"|"$SYNC_CMD_UP_EDIT"|"$SYNC_CMD_UNPAUSE") ;;  # допустимые команды
+    ""|\
+    "$SYNC_CMD_REGULAR"|"$SYNC_CMD_UP"|"$SYNC_CMD_DL"|\
+    "$SYNC_CMD_UP_INIT"|"$SYNC_CMD_DL_INIT"|\
+    "$SYNC_CMD_PAUSE"|"$SYNC_CMD_UP_EDIT"|"$SYNC_CMD_UNPAUSE") : ;;  # допустимые команды
 
     *)
-        log_info "Неверная команда: [$USER_CMD]"
-        echo "Неверная команда: [$USER_CMD]"
-        exit 2
+        exit_with_msg "Неверная команда: [$USER_CMD]" 2;
         ;;
 esac
 
@@ -311,8 +447,7 @@ log_info "CMD: $0 ${*@Q}"
 
 
 [[ -f "$SYNC_ALL_LIST_FILE" ]] || {
-    echo "Файл $SYNC_ALL_LIST_FILE не найден"
-    exit 1
+    exit_with_msg "Файл $SYNC_ALL_LIST_FILE не найден" 1;
 }
 
 
