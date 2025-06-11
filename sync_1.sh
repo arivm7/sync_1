@@ -3,7 +3,7 @@
 
 
 
-VERSION="1.4.1-beta (2025-05-26)"
+VERSION="1.5.0-beta (2025-06-12)"
 LAST_CHANGES="\
 v1.3.0 (2025-04-21): Добавлена команда автоматического создания удалённого репозитория командой CLOUD_UP_INIT
 v1.3.1 (2025-04-22): Добавлено дефолтное наполнение файла excludes
@@ -11,6 +11,7 @@ v1.3.2 (2025-05-08): Добавлена команда LOG для показа �
 v1.3.3 (2025-05-17): Добавлен параметр SHOW_DEST показывает облачные пути
 v1.4.0 (2025-05-22): Рефакторинг и массовые проверки.
 v1.4.1 (2025-05-26): Исправление ошибок диспетчеризации команд
+v1.5.0 (2025-06-12): Добавлена команда TEST, которая проверяет и показывает состояние синхронизатора
 "
 
 
@@ -58,6 +59,17 @@ COLOR_OFF="\e[0m"                           # Терминальный цвет 
 
 
 
+# Определение: запуск из cron или вручную
+# [[ ! -t 0 && ! -t 1 ]] проверяет, не подключены ли stdin и stdout к терминалу.
+# Если оба не подключены — почти наверняка это cron, systemd, или другой фоновый запуск.
+IS_CRON=false
+if [[ ! -t 0 && ! -t 1 ]]; then
+    IS_CRON=true
+fi
+VERB_MODE=$(! ${IS_CRON})              # Подробный вывод всех действий. Если false -- то "тихий режим"
+
+
+
 LINE_TOP_="╔═══════════════════════════════════════════════════════════════════════════════╗"
 LINE_FREE="║                                                                               ║"
 MSG_TO_UP="║                          Отправка на сервер...⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ⮭ ║"
@@ -77,6 +89,7 @@ SHOW_HELP="HELP"
 # Параметры командной строки
 SHOW_LOG="LOG"                              # Показать логи
 SHOW_DEST="SHOW_DEST"                       # Показывает dest-строку
+SHOW_TEST="TEST"                            # Только проверить структуру
 SYNC_CMD_REGULAR="REGULAR"
 SYNC_CMD_UP="UP"
 SYNC_CMD_DL="DL"
@@ -132,6 +145,7 @@ VALID_COMMANDS=(
     # Показывают
     "${SHOW_LOG}"
     "${SHOW_DEST}"
+    "${SHOW_TEST}"
 )
 
 
@@ -147,6 +161,7 @@ REQUIRING_SYNC_COMMANDS=(
     "${SYNC_CMD_UP_EDIT}"
     "${SYNC_CMD_UNPAUSE}"
     "${SHOW_DEST}"
+    "${SHOW_TEST}"
 )
 
 
@@ -217,9 +232,15 @@ ${APP_TITLE}
 
     ${SHOW_DEST} -- Показать строку из файла "${FILE_DEST}".
                Это адрес размещения папки на облачном сервере. Обычно вида "user@host:/путь/папка".
-    ${SHOW_LOG} <количество_строк>
-               Показыват указанное количество строк из лог-файла. По умолчанию количество = ${LOG_COUNT_ROWS}
 
+    ${SHOW_TEST}    -- Тестирует настройки синхронизатора.
+               Обмен данными не происходит. 
+               Только проверяет и показывает локальную струткуру 
+               и проверяет доступ к папке на сервере. 
+
+    ${SHOW_LOG} [<количество_строк>]
+               Показыват указанное количество строк из лог-файла. По умолчанию количество = ${LOG_COUNT_ROWS}
+               
     ${APP_NAME} ${SYNC_CMD_CLOUD_UP_INIT} <user@host:/путь/удалённая_папка>
                -- Создаёт sync-репозиторий из текущей папки.
                <удалённая_папка> -- папка на сервере, которая будет облачным хранилищем
@@ -237,6 +258,7 @@ ${APP_TITLE}
     --usage   | -u    Показать краткое использование
     --help    | -h    Показать эту подсказку
     --version | -v    Показать версию
+    
 EOF
 }
 
@@ -710,6 +732,53 @@ set_status_all()
 
 
 #
+#  Функция для проверки доступности записи в файл
+#
+check_file_access() {
+    local logfile=${1:?}
+
+    # Проверка доступности записи в файл
+    if [ -w "$logfile" ]; then
+        # ${VERB_MODE} && echo "Файл доступен для записи: $logfile"
+        return 0
+    fi
+
+    # Если файл существует, но недоступен для записи
+    if [ -e "$logfile" ]; then
+        ${VERB_MODE} && echo "Файл существует, но недоступен для записи: $logfile"
+        return 1
+    fi
+
+    # Файл не существует — проверим, существует ли директория
+    local dir
+    dir=$(dirname "$logfile")
+
+    if [ -d "$dir" ]; then
+        ${VERB_MODE} && echo "Файл $logfile не существует. Папка существует: $dir"
+        # Пробуем создать файл
+        touch "$logfile" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            ${VERB_MODE} && echo "Файл успешно создан: $logfile"
+            if [ -w "$logfile" ]; then
+                ${VERB_MODE} && echo "Файл $logfile теперь доступен для записи."
+                return 0
+            else
+                ${VERB_MODE} && echo "Файл $logfile создан, но недоступен для записи."
+                return 1
+            fi
+        else
+            ${VERB_MODE} && echo "Не удалось создать файл: $logfile"
+            return 1
+        fi
+    else
+        ${VERB_MODE} && echo "Папка для файла не существует: $dir"
+        return 1
+    fi
+}
+
+
+
+#
 # Проверка, заполнение и обновление путей и переменных
 #       DIR_SYNC        # папка параметров синхронизации
 #       MY_NAME         # Переменная означающа имя устройства, проверяем наличие локального файла
@@ -801,12 +870,13 @@ update_sync_variables()
                         "║                                                                               ║\n"\
               "$(printf "║      ОЩИБКА: Нет файла %-14s,                                        ║\n" "[ ${FILE_EXCLUDES} ]")"\
                         "║              в котором записаны исключения для rsync.                         ║\n"\
-                        "║              Создаём вефолтный.                                               ║\n"\
+                        "║              Создаём дефолтный (из внутреннего массива).                      ║\n"\
                         "║                                                                               ║\n"\
                         "╚═══════════════════════════════════════════════════════════════════════════════╝\n";
         touch "${DIR_LOCAL}/${FILE_EXCLUDES}" || exit_with_msg "По какой-то причине не удалось создать файл '${DIR_LOCAL}/${FILE_EXCLUDES}'. Проверьте доступы." 1
         echo "${EXCLUDES}">"${DIR_LOCAL}/${FILE_EXCLUDES}" || exit_with_msg "Очень странно..." 1
     fi
+
 }
 
 
@@ -1235,6 +1305,13 @@ esac
 
 update_sync_variables
 
+if check_file_access "${DIR_LOCAL}/${LOG_FILE}"; then
+    check_log="√"
+else
+    check_log="-"
+fi
+
+
 
 
 #
@@ -1245,16 +1322,25 @@ update_sync_variables
 TITLE=$(printf "%-50s" "${DIR_LOCAL}" | sed 's/ /═/g')
 TITLE=$(printf "╔═════════════════%s════════════╗\n" "${TITLE}")
 
-echo   "╔═════════════╤═════════════════════════════════════════════════════════════════╗"
-printf "║  CMD CLOUD  │  ${COLOR_STATUS}%-58s${COLOR_OFF}  √  ║\n" "${CMD_CLOUD}"
-printf "║  CMD LOCAL  │  ${COLOR_STATUS}%-58s${COLOR_OFF}  √  ║\n" "${CMD_USER}"
-printf "║  MY:        │  %-58s  √  ║\n" "${MY_NAME}"
-printf "║  DIR CLOUD  │  %-58s  √  ║\n" "${DIR_CLOUD}"
-printf "║  DIR LOCAL  │  %-58s  √  ║\n" "${DIR_LOCAL}"
-printf "║  EXCLUDES:  │  %-58s  √  ║\n" "${FILE_EXCLUDES}"
-printf "║  TEMP:      │  %-58s  √  ║\n" "${DIR_TEMP}"
-printf "║  LOG (opt)  │  %-58s     ║\n" "${LOG_FILE}"
-echo   "╚═════════════╧═════════════════════════════════════════════════════════════════╝"
+echo   "╔══════════════╤════════════════════════════════════════════════════════════════╗"
+printf "║  CMD CLOUD   │  ${COLOR_STATUS}%-57s${COLOR_OFF}  √  ║\n" "${CMD_CLOUD}"
+printf "║  CMD LOCAL   │  ${COLOR_STATUS}%-57s${COLOR_OFF}  √  ║\n" "${CMD_USER}"
+printf "║  MY:         │  %-57s  √  ║\n" "${MY_NAME}"
+printf "║  DIR CLOUD   │  %-57s  √  ║\n" "${DIR_CLOUD}"
+printf "║  DIR LOCAL   │  %-57s  √  ║\n" "${DIR_LOCAL}"
+printf "║  EXCLUDES:   │  %-57s  √  ║\n" "${FILE_EXCLUDES}"
+printf "║  TEMP:       │  %-57s  √  ║\n" "${DIR_TEMP}"
+printf "║  LOG (opt)   │  %-57s  %s  ║\n" "${LOG_FILE}" "${check_log}"
+echo   "╚══════════════╧════════════════════════════════════════════════════════════════╝"
+
+
+#
+#   Если команда SHOW_TEST, то больше ничего делать не нужно.
+#
+if [[ "${CMD_USER}" == "${SHOW_TEST}" ]]; then
+    echo "${SHOW_TEST} -- Ok."
+    exit 0;
+fi
 
 
 
