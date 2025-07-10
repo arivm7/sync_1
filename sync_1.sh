@@ -3,7 +3,7 @@
 # trap 'logger -p error -t "SYNC_1" "[$(date)] Ошибка в строке $LINENO: команда \"$BASH_COMMAND\""' ERR
 
 
-VERSION="1.6.0 (2025-06-27)"
+VERSION="1.7.0 (2025-07-10)"
 LAST_CHANGES="\
 v1.3.0 (2025-04-21): Добавлена команда автоматического создания удалённого репозитория командой CLOUD_UP_INIT
 v1.3.1 (2025-04-22): Добавлено дефолтное наполнение файла excludes
@@ -13,6 +13,7 @@ v1.4.0 (2025-05-22): Рефакторинг и массовые проверки
 v1.4.1 (2025-05-26): Исправление ошибок диспетчеризации команд
 v1.5.0 (2025-06-12): Добавлена команда TEST, которая проверяет и показывает состояние синхронизатора
 v1.6.0 (2025-06-27): Добавлен конфиг и команда редактирования конфига --edit-conf|-e
+v1.7.0 (2025-07-10): Добавлена команда SHOW_CLOUD_CMD, которая проверяет и показывает команду сервера
 "
 
 
@@ -44,76 +45,20 @@ SYNC_TYPE_SERVICE="SYNC_SERVICE"            # для копирования сл
 SYNC_TYPE_DATA="SYNC_DATA"                  # для копирования пользовательских данных
 
 
-#
-#  ============================================================================
-#  Раздел конфига
-#
 
-
-
-LOG_PREFIX="SYNC_1"                         # Используется для префикса в системном логе
-SSH_PORT="21235"                            # Порт для доступа по протоколу ssh
-LOG_COUNT_ROWS="40"                         # Количество строк по умолчанию при просмотре логов
-
-FILE_SYNC_ALL_LIST="sync_all.list"          # Имя файла для скрипта массовой синхронизации. 
-                                            # В него добавляется строка при создании репозитория.
-
-# Начальный список файла excludes для исключений rsync
-# Если файла excludes нет, то он создаётся и заполняется этими данными
-EXCLUDES="\
-*.kate-swp
-*.swp
-.git
-.Trash*
-.idea
-.sync
-.sync/*
-.~lock.*
-venv
-venv/*
-__pycache__
-Temporary
-"
-
-COLOR_STATUS="\e[0;36m"                     # Терминальный цвет для вывода переменной статуса
-COLOR_USAGE="\e[1;32m"                      # Терминальный цвет для вывода переменной статуса
-COLOR_INFO="\e[0;34m"                       # Терминальный цвет для вывода информации (об ошибке или причине выхода)
-COLOR_ERROR="\e[0;31m"                      # Терминальный цвет для вывода ошибок
-COLOR_OFF="\e[0m"                           # Терминальный цвет для сброса цвета
-
-# Программа-редактор для редактирования конфиг-файла
-# (без пробелов в пути/и/названии)
-EDITOR="nano"
-
-
-
-#
-#  Конец раздела конфига
-#  ----------------------------------------------------------------------------
-#
-
-
-#
-# Перепределение переменных из конфиг-файла
-# Если конфиг-файла нет, то создаём его
-# load_config
-#
-if [ -f "$CONFIG_FILE" ]; then
-    # shellcheck source="${XDG_CONFIG_HOME:-${HOME}/.config}/${CONFIG_DIRNAME}/${FILE_NAME}.conf"
-    # shellcheck disable=SC1091
-    source "$CONFIG_FILE"
-else
-    mkdir -p "$(dirname "$CONFIG_FILE")"
-    echo  -e "Инициализация конфиг-файла '${CONFIG_FILE}'"
-cat <<EOF > "${CONFIG_FILE}"
 ##
-##  Конфиг для скрипта ${APP_NAME}. 
-##  Из пакета индивидуальной синхронизации ${FILE_NAME}.
+##  ============================================================================
+##  [CONFIG START] Начало секции конфига
+##
+
+##
+##  Конфиг для скрипта sync_1. 
+##  Из пакета индивидуальной синхронизации sync_1.
 ##  VERSION 1.0.0 (2025-06-26)
 ##
 
 #
-#  Допустимо использование переменных типа \${HOME}
+#  Допустимо использование переменных типа ${HOME}
 #
 
 LOG_PREFIX="SYNC_1"                         # Используется для префикса в системном логе
@@ -140,17 +85,26 @@ __pycache__
 Temporary
 "
 
+COLOR_FILENAME="\e[1;36m"                   # Терминальный цвет для вывода имён файлов
 COLOR_STATUS="\e[0;36m"                     # Терминальный цвет для вывода переменной статуса
-COLOR_USAGE="\e[1;32m"                      # Терминальный цвет для вывода переменной статуса
-COLOR_INFO="\e[0;34m"                       # Терминальный цвет для вывода информации (об ошибке или причине выхода)
+COLOR_USAGE="\e[1;32m"                      # Терминальный цвет для вывода подсказок по использованию
+COLOR_INFO="\e[0;34m"                       # Терминальный цвет для вывода информации
+COLOR_OK="\033[0;32m"                       # Терминальный цвет для вывода Ok-сообщения
 COLOR_ERROR="\e[0;31m"                      # Терминальный цвет для вывода ошибок
 COLOR_OFF="\e[0m"                           # Терминальный цвет для сброса цвета
 
 # Программа-редактор для редактирования конфиг-файла
 # (без пробелов в пути/и/названии)
 EDITOR="nano"
-EOF
-fi
+
+APP_AWK="/usr/bin/awk"
+DRY_RUN=0                                   # Только посчитать. Без файловых операций
+
+
+##
+##  [CONFIG END] Конец секции конфига
+##  ----------------------------------------------------------------------------
+##
 
 
 
@@ -181,6 +135,7 @@ LINE_BOT_="╚══════════════════════
 SHOW_LOG="LOG"                              # Показать логи
 SHOW_DEST="SHOW_DEST"                       # Показывает dest-строку
 SHOW_TEST="TEST"                            # Только проверить структуру
+SHOW_CLOUD_CMD="SHOW_CLOUD_CMD"             # Показывает команду сервера
 SYNC_CMD_REGULAR="REGULAR"
 SYNC_CMD_UP="UP"
 SYNC_CMD_DL="DL"
@@ -219,6 +174,7 @@ VALID_COMMANDS=(
     "${SHOW_LOG}"
     "${SHOW_DEST}"
     "${SHOW_TEST}"
+    "${SHOW_CLOUD_CMD}"
 )
 
 
@@ -235,17 +191,23 @@ REQUIRING_SYNC_COMMANDS=(
     "${SYNC_CMD_UNPAUSE}"
     "${SHOW_DEST}"
     "${SHOW_TEST}"
+    "${SHOW_CLOUD_CMD}"
 )
 
 
 
 #
-#  Обёртки для логирования
+#  Обёртка для logger -p info
 #
 log_info() {
     logger -p info -t "${LOG_PREFIX}" "$*"
 }
 
+
+
+#
+#  Обёртка для logger -p error
+#
 log_error() {
     logger -p error -t "${LOG_PREFIX}" "$*"
 }
@@ -258,25 +220,67 @@ log_error() {
 # $2 -- код ошибки. По умолчанию "1"
 #
 exit_with_msg() {
-    local msg="${1:?exit_with_msg() строка не передана или пуста. Смотреть вызывающую функцию.}"
+    local msg="${1:?Строка не передана или пуста. Смотреть вызывающую функцию.}"
     local num="${2:-1}"
     case "${num}" in
     1)
         log_error "ERR: ${msg}"
-        msg="${COLOR_ERROR}${msg}${COLOR_OFF}"
+        msg="[${COLOR_ERROR}Ошибка${COLOR_OFF}] ${msg}"
         ;;
     2)
         log_error "ERR: ${msg}"
-        msg="${COLOR_ERROR}${msg}${COLOR_OFF}"
+        msg="[${COLOR_ERROR}Ошибка${COLOR_OFF}] ${msg}"
         msg="${msg}\nПодсказка по использованию: ${COLOR_USAGE}${APP_NAME} --usage|-u${COLOR_OFF}"
         ;;
-    0|*)
-        log_info "ERR: ${msg}"
-        msg="${COLOR_INFO}${msg}${COLOR_OFF}"
+    0)
+        log_info "OK: ${msg}"
+        msg="[${COLOR_OK}Ok${COLOR_OFF}] ${msg}"
+        ;;
+    *)
+        log_info "${msg}"
+        msg="[${COLOR_INFO}i${COLOR_OFF}] ${msg}"
         ;;
     esac
     echo -e "${msg}"
     exit "$num"
+}
+
+
+
+#
+#  Записывает в конфиг файл фрагмент этого же скрипта между строками, содержащими [КОНФИГ СТАРТ] и [КОНФИГ ЕНД] 
+#  Используемые глобальные переменные 0 и CONFIG_FILE
+#
+save_config_file()
+{
+    mkdir -p "${CONFIG_PATH}"
+    echo  -e "Инициализация конфиг-файла '${COLOR_FILENAME}${CONFIG_FILE}${COLOR_OFF}'"
+    if ! command -v "${APP_AWK}" >/dev/null 2>&1; then
+        exit_with_msg "Нет приложения ${COLOR_FILENAME}${APP_AWK}${COLOR_OFF}." 1
+    fi
+    # Извлечь фрагмент между [КОНФИГ СТАРТ] и [КОНФИГ ЕНД] из самого скрипта
+    [[ $DRY_RUN -eq 0 ]] && "${APP_AWK}" '/\[\s*CONFIG START\s*\]/,/\[\s*CONFIG END\s*\]/' "$0" > "${CONFIG_FILE}"
+}
+
+
+
+#
+#  Чтение конфигурационного файла.
+#  Если его нет, то создание.
+#
+read_config_file()
+{
+    #
+    # Перепределение переменных из конфиг-файла
+    # Если конфиг-файла нет, то создаём его
+    # load_config
+    #
+    if [ -f "${CONFIG_FILE}" ]; then
+        # shellcheck source="${XDG_CONFIG_HOME:-${HOME}/.config}/${CONFIG_DIRNAME}}/${FILE_NAME}.conf"
+        source "${CONFIG_FILE}"
+    else
+        save_config_file
+    fi
 }
 
 
@@ -308,27 +312,36 @@ ${APP_TITLE}
                Запись данных на сервер (${SYNC_CMD_UP}) и скачивание данных с сервера (${SYNC_CMD_DL})
                без удаления расхождений. По сути, это двусторонее совмещение данных на сервере 
                и на локальном компьютере, с заменой старых файлов на новые по метке времени.
+
     ${SYNC_CMD_UP}      -- Запись данных на сервер без удаления. Переписываются старые.
+
     ${SYNC_CMD_DL}      -- Чтение данных с сервера без удаления. Переписываются старые.
+
     ${SYNC_CMD_DL_INIT} -- Загрузка данных с сервера на локальный хост 
                с полным удалением расхождений на локальном хосте.
-    $SYNC_CMD_UP_INIT -- Запись данных с локального хоста на сервер 
+
+    ${SYNC_CMD_UP_INIT} -- Запись данных с локального хоста на сервер 
                с полным удалением расхождений на сервере, и установка для всех хостов 
                статуса ${SYNC_CMD_DL_INIT} для обязательной загрузки изменений.
+
     ${SYNC_CMD_PAUSE}   -- Обмен данными не происходит. Режим используется для изменений данных 
                на сервере. Никакая команда с сервера ничего не скачивает. 
                Изменение в структуре файлов можно проводить прямо на сервере (поскольку доступ 
                по ssh у вас есть), или в локальной папке у вас на компе, после чего можно отправить 
                изменения на сервер командой ${SYNC_CMD_UP_EDIT}, которая, собственно, 
                только для этого и предназначена.
+
     ${SYNC_CMD_UP_EDIT} -- Отправляет данные на сервер с удалением расхождений на стороне сервера.
                Работает только если статус сервера ${SYNC_CMD_PAUSE}. 
                Работает как ${SYNC_CMD_UP_INIT} только НЕ изменяет статус синхронизации для клиентов.
+
     ${SYNC_CMD_UNPAUSE} -- Обмен данными не происходит.
                Для всех хостов устанавливается статус ${SYNC_CMD_DL_INIT} 
 
     ${SHOW_DEST} -- Показать строку из файла "${FILE_DEST}".
                Это адрес размещения папки на облачном сервере. Обычно вида "user@host:/путь/папка".
+
+    ${SHOW_CLOUD_CMD} -- Показать команду сервера для этой папки
 
     ${SHOW_TEST}    -- Тестирует настройки синхронизатора.
                Обмен данными не происходит. 
@@ -570,95 +583,6 @@ find_sync_dir() {
 
 
 #
-#  парсинг входных параметров
-#
-parse_args() {
-
-    # Если ничего не передано, то выйти с ошибкой и подсказкой.
-    if [ $# -lt 1 ]; then
-        exit_with_msg "Вы не указали что именно Вы хотите сделать." 2
-    fi
-
-    local DIR_LOCAL_SET=0
-
-    for arg in "$@"; do
-        # Проверка на наличие posix команд-параметров --help|-h|--version|-v|--usage|-u
-        case "$arg" in
-            -e|--edit-conf)
-                echo "Редактирование конфига: ${CONFIG_FILE}"
-                exec ${EDITOR} "${CONFIG_FILE}"
-                exit 0;
-                ;;
-            -h|--help)
-                print_help
-                exit 0
-                ;;
-            -u|--usage)
-                print_usage
-                exit 0
-                ;;
-            -v|--version)
-                print_version
-                exit 0
-                ;;
-        esac
-        # Проверка на правильность пользовательской команды
-        for cmd_true in "${VALID_COMMANDS[@]}"; do
-            if [[ "$arg" == "${cmd_true}" ]]; then
-                CMD_USER="$arg"
-                continue 2
-            fi
-        done
-        # Првоерка чтобы пользовательская папка была указана один раз
-        if [[ $DIR_LOCAL_SET -eq 0 ]]; then
-            DIR_LOCAL="$arg"
-            DIR_LOCAL_SET=1
-        else
-            exit_with_msg "Ошибка: неизвестный параметр '$arg'" 2
-        fi
-    done
-
-    # Проверка команды LOG
-    if [[ "$CMD_USER" == "${SHOW_LOG}" ]]; then
-        if [[ $DIR_LOCAL_SET -eq 1 ]]; then
-            if [[ "${DIR_LOCAL}" =~ ^[0-9]+$ ]]; then
-                LOG_COUNT_ROWS="${DIR_LOCAL}"
-                DIR_LOCAL="${DIR_LOCAL_DEFAULT}"
-            else
-                exit_with_msg "Ошибка: для команды LOG можно указать число строк, а не путь к папке." 2
-            fi
-        fi
-
-    # Проверка команды CLOUD_UP_INIT
-    elif [[ "$CMD_USER" == "${SYNC_CMD_CLOUD_UP_INIT}" ]]; then
-        if [[ $DIR_LOCAL_SET -eq 0 ]]; then
-            exit_with_msg "Ошибка: необходимо указать путь для загрузки в облако (user@host:/путь/к/новая_папка)" 2
-        fi
-
-        DIR_CLOUD="${DIR_LOCAL}"
-        DIR_LOCAL="."
-
-        if ! validate_cloud_up_init "${DIR_CLOUD}"; then
-            exit_with_msg "Ошибка: ${DIR_CLOUD} не прошла валидацию." 1
-        fi
-    fi
-
-    # Проверка существования локальной папки (в любом случае)
-    if [[ ! -d "${DIR_LOCAL}" ]]; then
-        if [[ -f "${DIR_LOCAL}" ]]; then
-            exit_with_msg "Ошибка: '${DIR_LOCAL}' является файлом, а не папкой." 2
-        else
-            exit_with_msg "Ошибка: папка '${DIR_LOCAL}' не найдена." 2
-        fi
-    fi
-
-    # вернуть полный путь, даже для ссылок
-    DIR_LOCAL="$(get_abs_path "$DIR_LOCAL")"
-}
-
-
-
-#
 #  CMD_TRANSFER_SERV и CMD_TRANSFER_DATA должны инициализироваться 
 #  только после parse_args(), поскольку именно там
 #  инициализируется переменная DIR_LOCAL
@@ -751,11 +675,11 @@ sync_regular()
     local LOCAL="${1:?sync_regular LOCAL не передана или пуста. Это программная ошибка скрипта.}"
     local DEST="${2:?sync_regular DEST не передана или пуста. Это программная ошибка скрипта.}"
     echo   "$MSG_TO_UP"
-    dl "$LOCAL" "$DEST" "${SYNC_TYPE_DATA}" || exit_with_msg  "sync_regular: Ошибка при выполнении dl \"$LOCAL\" \"$DEST\" \"${SYNC_TYPE_DATA}\"" 1
+    dl "$LOCAL" "$DEST" "${SYNC_TYPE_DATA}" || exit_with_msg  "sync_regular: Ошибка при выполнении dl '$LOCAL' '$DEST' '${SYNC_TYPE_DATA}'" 1
 
     echo   "${MSG__DIV_}"
     echo   "${MSG_TO_DN}"
-    dl "$DEST"  "$LOCAL" "${SYNC_TYPE_DATA}" || exit_with_msg "sync_regular: Ошибка при выполнении dl \"$DEST\" \"$LOCAL\" \"${SYNC_TYPE_DATA}\"" 1
+    dl "$DEST"  "$LOCAL" "${SYNC_TYPE_DATA}" || exit_with_msg "sync_regular: Ошибка при выполнении dl '$DEST' '$LOCAL' '${SYNC_TYPE_DATA}'" 1
 }
 
 
@@ -892,8 +816,7 @@ check_file_access() {
     if [ -d "$dir" ]; then
         ${VERB_MODE} && echo "Файл $logfile не существует. Папка существует: $dir"
         # Пробуем создать файл
-        touch "$logfile" 2>/dev/null
-        if [ $? -eq 0 ]; then
+        if touch "$logfile" 2>/dev/null; then
             ${VERB_MODE} && echo "Файл успешно создан: $logfile"
             if [ -w "$logfile" ]; then
                 ${VERB_MODE} && echo "Файл $logfile теперь доступен для записи."
@@ -910,6 +833,41 @@ check_file_access() {
         ${VERB_MODE} && echo "Папка для файла не существует: $dir"
         return 1
     fi
+}
+
+
+
+#
+#  Считывает команду сервера
+#  Если файла регистрации на сервере нет, то регистрирует 
+#  и предлагает перезапустить синхронизацию снова
+#
+update_clour_cmd()
+{
+    # CMD_CLOUD                 # Команда синхронизации с сервера
+    init_temp
+    dl  "${DIR_CLOUD}/${DIR_SYNC}/${MY_NAME}" \
+        "${DIR_LOCAL}/${DIR_TEMP}/" \
+        "${SYNC_TYPE_SERVICE}"
+
+    if [ ! -f "${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME}" ]; then
+        echo "Файла ${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME} нет"
+        echo "Предположительно его нет на удаленном хосте"
+        echo "Регистрируем компьютер на удаленном хосте"
+        init_local "${SYNC_CMD_DL_INIT}"
+        init_dest
+        exit_with_msg   "╔═══════════════════════════════════════════════════════════════════════════════╗\n"\
+                        "║                                                                               ║\n"\
+                        "║                      Запустите синхронизацию ещё раз                          ║\n"\
+                        "║                                                                               ║\n"\
+                        "╚═══════════════════════════════════════════════════════════════════════════════╝"\
+                        1;
+    else
+        CMD_CLOUD=$(cat "${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME}")
+        if [ -f "${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME}" ]; then
+            rm "${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME}" || exit_with_msg "update_sync_variables: Не удалось удалить \"${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME}\"" 1;
+        fi
+    fi    
 }
 
 
@@ -976,29 +934,7 @@ update_sync_variables()
     fi
 
     # CMD_CLOUD                 # Команда синхронизации с сервера
-    init_temp
-    dl  "${DIR_CLOUD}/${DIR_SYNC}/${MY_NAME}" \
-        "${DIR_LOCAL}/${DIR_TEMP}/" \
-        "${SYNC_TYPE_SERVICE}"
-
-    if [ ! -f "${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME}" ]; then
-        echo "Файла ${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME} нет"
-        echo "Предположительно его нет на удаленном хосте"
-        echo "Регистрируем компьютер на удаленном хосте"
-        init_local "${SYNC_CMD_DL_INIT}"
-        init_dest
-        exit_with_msg   "╔═══════════════════════════════════════════════════════════════════════════════╗\n"\
-                        "║                                                                               ║\n"\
-                        "║                      Запустите синхронизацию ещё раз                          ║\n"\
-                        "║                                                                               ║\n"\
-                        "╚═══════════════════════════════════════════════════════════════════════════════╝"\
-                        1;
-    else
-        CMD_CLOUD=$(cat "${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME}")
-        if [ -f "${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME}" ]; then
-            rm "${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME}" || exit_with_msg "update_sync_variables: Не удалось удалить \"${DIR_LOCAL}/${DIR_TEMP}/${MY_NAME}\"" 1;
-        fi
-    fi
+    update_clour_cmd
 
     # FILE_EXCLUDES             # Файл исключений для rsync
     if [ ! -f "${DIR_LOCAL}/${FILE_EXCLUDES}" ]; then
@@ -1224,7 +1160,7 @@ do_sync_regular()
 #
 do_sync_dl_init()
 {
-    MSG="${1:-}"
+    local MSG="${1:-}"
     {   # Баннер
         do_sync_print_header
         [[ -n "$MSG" ]] && \
@@ -1360,12 +1296,105 @@ do_sync_unpause()
 
 
 #
+#  парсинг входных параметров
+#
+parse_args() {
+
+    # Если ничего не передано, то выйти с ошибкой и подсказкой.
+    if [ $# -lt 1 ]; then
+        exit_with_msg "Вы не указали что именно Вы хотите сделать." 2
+    fi
+
+    local DIR_LOCAL_SET=0
+
+    for arg in "$@"; do
+        # Проверка на наличие posix команд-параметров --help|-h|--version|-v|--usage|-u
+        case "$arg" in
+            -e|--edit-conf)
+                echo "Редактирование конфига: ${CONFIG_FILE}"
+                exec ${EDITOR} "${CONFIG_FILE}"
+                exit 0;
+                ;;
+            -h|--help)
+                print_help
+                exit 0
+                ;;
+            -u|--usage)
+                print_usage
+                exit 0
+                ;;
+            -v|--version)
+                print_version
+                exit 0
+                ;;
+        esac
+        # Проверка на правильность пользовательской команды
+        for cmd_true in "${VALID_COMMANDS[@]}"; do
+            if [[ "$arg" == "${cmd_true}" ]]; then
+                CMD_USER="$arg"
+                continue 2
+            fi
+        done
+        # Првоерка чтобы пользовательская папка была указана один раз
+        if [[ $DIR_LOCAL_SET -eq 0 ]]; then
+            DIR_LOCAL="$arg"
+            DIR_LOCAL_SET=1
+        else
+            exit_with_msg "Ошибка: неизвестный параметр '$arg'" 2
+        fi
+    done
+
+    # Проверка команды LOG
+    if [[ "$CMD_USER" == "${SHOW_LOG}" ]]; then
+        if [[ $DIR_LOCAL_SET -eq 1 ]]; then
+            if [[ "${DIR_LOCAL}" =~ ^[0-9]+$ ]]; then
+                LOG_COUNT_ROWS="${DIR_LOCAL}"
+                DIR_LOCAL="${DIR_LOCAL_DEFAULT}"
+            else
+                exit_with_msg "Ошибка: для команды LOG можно указать число строк, а не путь к папке." 2
+            fi
+        fi
+
+    # Проверка команды CLOUD_UP_INIT
+    elif [[ "$CMD_USER" == "${SYNC_CMD_CLOUD_UP_INIT}" ]]; then
+        if [[ $DIR_LOCAL_SET -eq 0 ]]; then
+            exit_with_msg "Ошибка: необходимо указать путь для загрузки в облако (user@host:/путь/к/новая_папка)" 2
+        fi
+
+        DIR_CLOUD="${DIR_LOCAL}"
+        DIR_LOCAL="."
+
+        if ! validate_cloud_up_init "${DIR_CLOUD}"; then
+            exit_with_msg "Ошибка: ${DIR_CLOUD} не прошла валидацию." 1
+        fi
+    fi
+
+    # Проверка существования локальной папки (в любом случае)
+    if [[ ! -d "${DIR_LOCAL}" ]]; then
+        if [[ -f "${DIR_LOCAL}" ]]; then
+            exit_with_msg "Ошибка: '${DIR_LOCAL}' является файлом, а не папкой." 2
+        else
+            exit_with_msg "Ошибка: папка '${DIR_LOCAL}' не найдена." 2
+        fi
+    fi
+
+    # вернуть полный путь, даже для ссылок
+    DIR_LOCAL="$(get_abs_path "$DIR_LOCAL")"
+}
+
+
+
+#
 #
 #
 # =================================== MAIN ====================================
 #
 #
 #
+
+
+
+read_config_file
 
 
 
@@ -1419,7 +1448,7 @@ case "$CMD_USER" in
         ;;
     "${SHOW_DEST}")
         #  Показать строку dest
-        read -r DIR_CLOUD <"${DIR_LOCAL}/${FILE_DEST}" || exit_with_msg "Ошибка чтения \"${DIR_LOCAL}/${FILE_DEST}\"" 1
+        read -r DIR_CLOUD <"${DIR_LOCAL}/${FILE_DEST}" || exit_with_msg "Ошибка чтения '${DIR_LOCAL}/${FILE_DEST}'" 1
         echo "${DIR_CLOUD}"
         exit 0;
         ;;
@@ -1429,6 +1458,24 @@ esac
 
 update_sync_variables
 
+
+
+#
+# Обработка простых команд, требующих инициализации переменных
+#
+case "$CMD_USER" in
+    "${SHOW_CLOUD_CMD}")
+        #  Показать серверную команду
+        echo "${CMD_CLOUD}"
+        exit 0;
+        ;;
+esac
+
+
+
+#
+#  Проверка записи в лог-файл
+#
 if check_file_access "${DIR_LOCAL}/${LOG_FILE}"; then
     check_log="√"
 else
@@ -1437,10 +1484,15 @@ fi
 
 
 
-
 #
+#
+#
+#   ===========================================================================
 #   Дальше обрабатывается то, что нужно синхронизировать
 #
+#
+#
+
 
 
 TITLE=$(printf "%-50s" "${DIR_LOCAL}" | sed 's/ /═/g')

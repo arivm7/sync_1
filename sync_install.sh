@@ -4,11 +4,12 @@ set -euo pipefail
 
 
 APP_TITLE="Инсталятор персонального синхронизатора sync_1"
-VERSION="1.3.1 (2025-05-25)"
+VERSION="1.4.0 (2025-07-10)"
 APP_NAME=$(basename "$0")
 LAST_CHANGES="\
 v1.3.0 (2025-04-29): Добавление установки зависимостей.
 v1.3.1 (2025-05-25): Переделывание установки зависимостей
+v1.4.0 (2025-07-10): Поддержка установки sync_watcher
 "
 
 
@@ -17,12 +18,15 @@ SYNC_CONFIG_DIRNAME="sync"
 SYNC_CONFIG_PATH="${XDG_CONFIG_HOME:-${HOME}/.config}/${SYNC_CONFIG_DIRNAME:+${SYNC_CONFIG_DIRNAME}}"
 
 
-# COLOR_USAGE="\e[1;32m"            # Терминальный цвет для вывода переменной статуса
-COLOR_OK="\e[0;32m"                 # Терминальный цвет для вывода Успешного сообщения
-COLOR_ERROR="\e[0;31m"              # Терминальный цвет для вывода ошибок
-# COLOR_INFO="\e[0;34m"             # Терминальный цвет для вывода информации (об ошибке или причине выхода)
-# COLOR_FILENAME="\e[1;36m"         # Терминальный цвет для вывода имён файлов
-COLOR_OFF="\e[0m"                   # Терминальный цвет для сброса цвета
+# shellcheck disable=SC2034
+{
+    COLOR_USAGE="\e[1;32m"            # Терминальный цвет для вывода переменной статуса
+    COLOR_OK="\e[0;32m"                 # Терминальный цвет для вывода Успешного сообщения
+    COLOR_ERROR="\e[0;31m"              # Терминальный цвет для вывода ошибок
+    COLOR_INFO="\e[0;34m"             # Терминальный цвет для вывода информации (об ошибке или причине выхода)
+    COLOR_FILENAME="\e[1;36m"         # Терминальный цвет для вывода имён файлов
+    COLOR_OFF="\e[0m"                   # Терминальный цвет для сброса цвета
+}
 
 
 
@@ -59,6 +63,8 @@ declare -A DEPENDENCIES_OPTIONAL=(
     ["figlet"]="figlet"
     ["realpath"]="coreutils"
     ["readlink"]="coreutils"
+    ["inotifywait"]="inotify-tools"
+    ["envsubst"]="gettext"
 )
 
 
@@ -70,6 +76,7 @@ sync_1.sh
 sync_all.sh
 sync_1_aliases.sh
 sync_backuper.sh
+sync_watcher.sh
 )
 
 # папка назначения для копирования скриптов
@@ -89,12 +96,23 @@ icon_to="${HOME}/.local/share/icons/sync"
 
 
 
-# Конфиг файл для массовой синхронизации
-SYNC_ALL_LIST_FILE="sync_all.list"
-SYNC_BACKUPER_LIST="sync_backuper.list"
+# # Лист-файл для массовой синхронизации
+# SYNC_ALL_LIST_FILE="sync_all.list"
+# # Лист-файл для бакапера
+# SYNC_BACKUPER_LIST="sync_backuper.list"
+# # Лист-файл для автосихронизатора
+# SYNC_WATCHER_LIST="sync_watcher.list"
+
+# Список лист-файлов для копирования
+# shellcheck disable=SC2034
+list_files=(
+    sync_all.list
+    sync_backuper.list
+    sync_watcher.list
+)
 
 # папка назначения для копирования конфигов
-config_to="${SYNC_CONFIG_PATH}"
+list_to="${SYNC_CONFIG_PATH}"
 
 
 
@@ -297,9 +315,10 @@ copy_file_to desktop_files "${desktop_to}"
 
 #
 #  Устанавлвивает конфиг файл, если его нет.
-# Если есть. то сообщает об этом и ничего не делает
-# install_config_file <путь_установки> <файл>
-#
+#  Если есть. то сообщает об этом и ничего не делает
+#  install_config_file <путь_установки> <файл>
+#  $1 -- путь назначения
+#  $2 -- имя конфиг-файла
 install_config_file() {
     local target_dir="${1:?}"       # путь назначения
     local config_file="${2:?}"      # имя конфиг-файла
@@ -326,8 +345,35 @@ install_config_file() {
     echo -e "${COLOR_OK}Ok${COLOR_OFF}.\n"
 }
 
-install_config_file "${config_to}" "${SYNC_ALL_LIST_FILE}"
-install_config_file "${config_to}" "${SYNC_BACKUPER_LIST}"
+
+# Копирование файлов в рабочий каталог только если файла нет
+# $1 -- имя массива со списком файлов
+# $2 -- папка назначения
+# с помощью вызова install_config_file()
+install_config_all()
+{
+    local -n local_array=$1
+    COPY_TO=$2
+    mkdir -p "${COPY_TO}" || { echo -e "${COLOR_ERROR}ОШИБКА${COLOR_OFF}: Ошибка созданя папки для конфигов '${COPY_TO}'."; exit 1; }
+    for element in "${local_array[@]}"; do
+        if [ -f "${element}" ]; then
+            echo -e "==== Устанавливаем ${element} -> ${COPY_TO}"
+            #  $1 -- путь назначения
+            #  $2 -- имя конфиг-файла
+            install_config_file "${list_to}" "${element}"
+        else
+            echo -e "[${COLOR_ERROR}Ошибка{COLOR_OFF}] ${element} -- НЕ ФАЙЛ или НЕВЕРНОЕ УКАЗАНИЕ$"
+            echo -e "Аварийное прекращение работы."
+            exit 1;
+        fi
+    done
+    echo -e "==== ${COLOR_OK}Копирование завершено${COLOR_OFF}\n"
+}
+
+# $1 -- имя массива со списком файлов
+# $2 -- папка назначения
+install_config_all list_files "${list_to}"
+
 
 
 echo ""
