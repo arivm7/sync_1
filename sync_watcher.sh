@@ -2,10 +2,12 @@
 set -euo pipefail
 trap 'logger -p error -t "SYNC_WATHER" "[$(date)] Ошибка в строке $LINENO: команда \"$BASH_COMMAND\""' ERR
 
-VERSION="0.2-alfa (2025-07-10)"
+VERSION="0.2.1-alfa (2025-08-05)"
 LAST_CHANGES="\
+v0.2.1 (2025-08-05): Исправление механизма передачи параметров с sync_1
 v0.2.0 (2025-07-10): Базовый функционал
 "
+
 
 APP_TITLE="Слушатель изменений и автосинхронизатор"
 APP_NAME=$(basename "$0")                                   # Полное имя скрипта, включая расширение
@@ -64,15 +66,15 @@ LOG_PREFIX="SYNC_ALL"                       # Используется для п
 APP_S1="${APP_PATH}/sync_1.sh"              # Программа-синхронизатор
 
 APP_INOTIFYWAIT="/usr/bin/inotifywait"
-APP_INOTIFYWAIT_PKG="inotify-tools"
+APP_INOTIFYWAIT_PKG="inotify-tools"         # пакет, из которого устанавливать
 
 APP_AWK="/usr/bin/awk"
-APP_AWK_PKG="gawk"
+APP_AWK_PKG="gawk"                          # пакет, из которого устанавливать
 
 APP_ENVSUBST="/usr/bin/envsubst"
 APP_ENVSUBST_PKG="gettext"
 
-SLEEP_WAIT=1                                # Время ожидния перед выполнением команды синхронизации
+SLEEP_WAIT=5                               # Время ожидния перед выполнением команды синхронизации
 
 
 
@@ -84,7 +86,9 @@ IGNORE_PATTERNS=(
     '\.swp$'               # swap-файлы
     '\.tmp$'               # временные
     '\.bak$'               # резервные
+    '\.zim-new~$'         # Временный файл zim
     '(^|/)\.sync/'         # любые файлы в папке .sync (в любом месте пути)
+    '\.~lock\.'
 )
 
 
@@ -273,8 +277,8 @@ ${COLOR_INFO}Использование:${COLOR_OFF}
     ${APP_NAME} [опции]
 
 ${COLOR_INFO}Опции:${COLOR_OFF}
-    ${COLOR_STATUS}--edit-conf${COLOR_OFF}       Открыть конфигурационный файл в редакторе
-    ${COLOR_STATUS}--edit-list${COLOR_OFF}       Открыть список папок для наблюдения в редакторе
+    ${COLOR_STATUS}--edit-conf, -ec${COLOR_OFF}  Открыть конфигурационный файл в редакторе
+    ${COLOR_STATUS}--edit-list, -el${COLOR_OFF}  Открыть список папок для наблюдения в редакторе
     ${COLOR_STATUS}--dry-run, -n${COLOR_OFF}     Только инициализировать конфиг, без выполнения действий
     ${COLOR_STATUS}--help, -h${COLOR_OFF}        Показать это сообщение
     ${COLOR_STATUS}--usage, -u${COLOR_OFF}       Краткая справка
@@ -308,12 +312,12 @@ print_version()
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --edit-conf)
+            --edit-conf|-ec)
                 echo "Редактирование конфига: ${CONFIG_FILE}"
                 exec ${EDITOR} "${CONFIG_FILE}"
                 exit 0;
                 ;;
-            --edit-list)
+            --edit-list|-el)
                 echo "Редактирование списка: ${LIST_FILE}"
                 exec "${EDITOR}" "${LIST_FILE}"
                 exit 0;
@@ -414,6 +418,7 @@ read_watch_folders()
 
 
 read_config_file
+
 [[ ${VERBOSE} -eq 1 ]] && {
     echo -e "[${COLOR_INFO}ii${COLOR_OFF}] Конфиг: '${COLOR_FILENAME}${CONFIG_FILE}${COLOR_OFF}'";
     echo -e "[${COLOR_INFO}ii${COLOR_OFF}] Список: '${COLOR_FILENAME}${LIST_FILE}${COLOR_OFF}'";
@@ -452,26 +457,27 @@ inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS
     echo -e "\n🟡 Обнаружено изменение"
     echo -e "${COLOR_USAGE}$(date +'%F %T')${COLOR_OFF} | ${COLOR_INFO}${action}${COLOR_OFF} → ${COLOR_FILENAME}${path}${file}${COLOR_OFF}"
 
-    cmd="${APP_S1} ${path} ${SHOW_CLOUD_CMD}"
-    cloud_cmd="$(${cmd})" || { exit_with_msg "Ошибка получения данных с сервера" 1; }
+    cloud_cmd=$("${APP_S1}" "${path}" "${SHOW_CLOUD_CMD}") || { exit_with_msg "Ошибка получения данных с сервера" 1; }
     echo -e "CMD_CLOUD: ${cloud_cmd}"
     case "${cloud_cmd}" in
         "${SYNC_CMD_REGULAR}")
-            cmd="${APP_S1} ${path} ${SYNC_CMD_UP}"
+            cmd=("${APP_S1}" "${path}" "${SYNC_CMD_UP}")
             ;;
         "${SYNC_CMD_PAUSE}")
-            cmd="${APP_S1} ${path} ${SYNC_CMD_UP_EDIT}"
+            cmd=("${APP_S1}" "${path}" "${SYNC_CMD_UP_EDIT}")
             ;;
         *)
-            cmd="${APP_S1} ${path}"
+            cmd=("${APP_S1}" "${path}")
             ;;
     esac
-    echo "RUN: eval ${cmd}"
+    
+    echo "RUN: ${cmd[*]}"
+
     # Подождать перед тем, ка грузить файлы
     sleep "${SLEEP_WAIT}"
     {   # СИНХРОНИЗИРУЕМ
         trap '' SIGINT  # Выключить ловлю Ctrl+C
-        eval "$cmd"
+        "${cmd[@]}"
         trap - SIGINT   # Восстановить ловлю Ctrl+C
     }
     echo -e "==== End UP [ Ctrl+C to stop ] ===="

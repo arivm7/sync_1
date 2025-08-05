@@ -119,8 +119,8 @@ list_to="${SYNC_CONFIG_PATH}"
 # Список имен файлов .desktop для копирования
 # shellcheck disable=SC2034
 desktop_files=(
-sync_regular.desktop
-sync_up.desktop
+desktop/sync_regular.desktop
+desktop/sync_up.desktop
 )
 
 # папка назначения для копирования скриптов
