@@ -15,6 +15,7 @@ fi
 
 
 APP_TITLE="Скрипт массовой сихронизации. Часть пакета персональной синхронизации sync_1"
+COPYRIGHT="(c) 2004-2025 RI-Network, tech support."         # Авторские права
 VERSION="1.7.0 (2025-07-10)"
 LAST_CHANGES="\
 v1.2.6 (2025-04-25): Рефакторинг run_one_dir()
@@ -279,11 +280,11 @@ ${APP_TITLE}
                  Показыват указанное количство строк из лог-файла. 
                  По умолчанию количеcтво = ${LOG_COUNT_ROWS}
 
-    --help    | -h      Это описание
-    --usage   | -u      Краткая справка по использованию
-    --version | -v      Версия скрипта
-    --edit-conf         Редактирование конфига
-    --edit-list         Редактирование списка для синхронизации
+    --help      | -h    Это описание
+    --usage     | -u    Краткая справка по использованию
+    --version   | -v    Версия скрипта
+    --edit-conf | -c    Редактирование конфига
+    --edit-list | -l    Редактирование списка для синхронизации
 
 ВАЖНО:
 При добавлении скрипта в crontab нужно добавить в cron-скрипт переменные окружения, 
@@ -304,6 +305,9 @@ ${APP_TITLE}
 
 Последние изменения
 ${LAST_CHANGES}
+
+${COPYRIGHT}
+
 EOF
 }
 
@@ -322,7 +326,7 @@ ${APP_TITLE}
                  [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:8}");  echo "${str//|/ | }";) ]
                  По умолчанию: ${SYNC_CMD_REGULAR}
                  [ --help | -h | --usage | -u | --version | -v ]
-                 [ --edit-conf | --edit-list ]
+                 [ --edit-conf | -c | --edit-list | -l ]
                  [ ${SHOW_LOG} <количество_строк> ]
 EOF
 }
@@ -496,12 +500,12 @@ case "${1:-}" in
     print_version
     exit 0
     ;;
-  --edit-conf)
+  -c|--edit-conf)
     echo "Редактирование конфига: ${CONFIG_FILE}"
     exec "${EDITOR}" "${CONFIG_FILE}"
     exit 0
     ;;
-  --edit-list)
+  -l|--edit-list)
     echo "Редактирование списка: ${SYNC_ALL_LIST_FILE}"
     exec "${EDITOR}" "${SYNC_ALL_LIST_FILE}"
     exit 0

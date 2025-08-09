@@ -44,6 +44,7 @@ _sync1_completions() {
 
 # Привязка функции к скрипту
 complete -F _sync1_completions sync_1.sh s1
-complete -W "REGULAR UP DL DL_INIT UP_INIT PAUSE UP_EDIT UNPAUSE SHOW_DEST SHOW_CLOUD_CMD TEST LOG     --edit-conf --edit-list --usage -u --help -h --version -v" sync_all.sh   s1_all
-complete -W "                                                                             --dry-run -n --edit-conf --edit-list --usage -u --help -h --version -v" sync_backuper.sh
-complete -W "                                                                             --dry-run -n --edit-conf --edit-list --usage -u --help -h --version -v" sync_watcher.sh
+complete -W "REGULAR UP DL DL_INIT UP_INIT PAUSE UP_EDIT UNPAUSE SHOW_DEST SHOW_CLOUD_CMD TEST LOG \
+                          --edit-conf -c --edit-list -l --usage -u --help -h --version -v" sync_all.sh s1_all
+complete -W "--dry-run -n --edit-conf -c --edit-list -l --usage -u --help -h --version -v" sync_backuper.sh
+complete -W "--dry-run -n --edit-conf -c --edit-list -l --usage -u --help -h --version -v" sync_watcher.sh

@@ -15,6 +15,7 @@ fi
 
 
 APP_TITLE="Скрипт автобакапа с ротацией архивов. Из пакета индивидуальной синхронизации sync_1."
+COPYRIGHT="(c) 2004-2025 RI-Network, tech support."         # Авторские права
 APP_NAME=$(basename "$0")                                   # Полное имя скрипта, включая расширение
 APP_PATH=$(cd "$(dirname "$0")" && pwd)                     # Путь размещения исполняемого скрипта
 FILE_NAME="${APP_NAME%.*}"                                  # Убираем расширение (если есть), например ".sh"
@@ -144,8 +145,8 @@ ${APP_TITLE}
   --dry-run, -n     Выполнить только расчёт (размеры, свободное место), без создания архивов
   --help, -h        Показать эту справку
   --usage, -u       Показать эту справку
-  --edit-conf       Редактирование конфига
-  --edit-list       Редактирование списка для бакапа
+  --edit-conf, -c   Редактирование конфига
+  --edit-list, -l   Редактирование списка для бакапа
 
 Конфигурация:
   - Список папок для архивации берётся из файла: $LIST_FILE
@@ -168,6 +169,9 @@ ${APP_TITLE}
 Путь скрипта: "${APP_PATH}"
 Последние изменения:
 ${LAST_CHANGES}
+
+${COPYRIGHT}
+
 EOF
 }
 
@@ -258,12 +262,12 @@ get_abs_path() {
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --edit-conf)
+            --edit-conf|-c)
                 echo "Редактирование конфига: ${CONFIG_FILE}"
                 exec ${EDITOR} "${CONFIG_FILE}"
                 exit 0;
                 ;;
-            --edit-list)
+            --edit-list|-l)
                 echo "Редактирование списка: ${LIST_FILE}"
                 exec "${EDITOR}" "${LIST_FILE}"
                 exit 0;
