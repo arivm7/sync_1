@@ -1,15 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+##
+##  Project     : sync_1
+##  Description : Инсталятор.
+##                Часть пакета индивидуальной синхронизации sync_1.
+##  File        : sync_1.sh
+##  Author      : Ariv <ariv@meta.ua> | https://github.com/arivm7
+##  Org         : RI-Network, Kiev, UK
+##  License     : GPL v3
+##    
+##  Copyright (C) 2006-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK
+##
+
 
 
 APP_TITLE="Инсталятор персонального синхронизатора sync_1"
 VERSION="1.4.0 (2025-07-10)"
+COPYRIGHT="Copyright (C) 2006-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK"
 APP_NAME=$(basename "$0")
 LAST_CHANGES="\
-v1.3.0 (2025-04-29): Добавление установки зависимостей.
-v1.3.1 (2025-05-25): Переделывание установки зависимостей
 v1.4.0 (2025-07-10): Поддержка установки sync_watcher
+v1.3.1 (2025-05-25): Переделывание установки зависимостей
+v1.3.0 (2025-04-29): Добавление установки зависимостей.
 "
 
 
@@ -72,11 +85,11 @@ declare -A DEPENDENCIES_OPTIONAL=(
 # Список имен файлов скриптов для копирования
 # shellcheck disable=SC2034
 scripts_files=(
-sync_1.sh
-sync_all.sh
-sync_1_aliases.sh
-sync_backuper.sh
-sync_watcher.sh
+    sync_1.sh
+    sync_all.sh
+    sync_1_aliases.sh
+    sync_backuper.sh
+    sync_watcher.sh
 )
 
 # папка назначения для копирования скриптов
@@ -87,8 +100,8 @@ scripts_to="${HOME}/bin"
 # Список имен файлов .desktop для копирования
 # shellcheck disable=SC2034
 icon_files=(
-img/sync_1.icon.svg
-img/sync_1_up.icon.svg
+    img/sync_1.icon.svg
+    img/sync_1_up.icon.svg
 )
 
 # папка назначения для копирования скриптов
@@ -138,25 +151,25 @@ ALIASES="${scripts_to}/sync_1_aliases.sh"
 
 print_help()
 {
-    echo "" 
-    echo "${APP_TITLE}" 
-    echo "${APP_NAME} -- Версия ${VERSION}" 
-    echo "Скрипт установки в систему рабочих скриптов, иконок и .desktop-файлов." 
-    echo "Вспомогательный скрипт из комплекта персональной синхронизации sync_1." 
-    echo ""
-    echo "Краткое описание инсталлятора:"
-    echo "    - Исполняемые скрипты копирются в папку ~/bin"
-    echo "      (sync_1.sh, sync_all.sh, sync_1_aliases.sh, sync_backuper.sh)"
-    echo "    - Конфиг-файлы и лист-файлы копируются в папаку ~/.config/sync"
-    echo "    - Иконки копируются в папаку ~/.local/share/icons/sync"
-    echo "    - .desktop-файлы копируются в папку ~/.local/share/applications"
-    echo "    - Скрипт с алиасами и автодополнением добавляется в ~/.bashrc"
-    echo ""
-    echo "Подробности о работе скриптов смотрите в справках соответствующих скриптов." 
-    echo ""
-    echo "Последние изменения"
-    echo "${LAST_CHANGES}"
-    echo ""
+    echo -e "${APP_TITLE}" 
+    echo -e "${APP_NAME} -- Версия ${VERSION}" 
+    echo -e "Скрипт установки в систему рабочих скриптов, иконок и .desktop-файлов." 
+    echo -e "Вспомогательный скрипт из комплекта персональной синхронизации sync_1." 
+    echo -e ""
+    echo -e "Краткое описание инсталлятора:"
+    echo -e "    - Исполняемые скрипты копирются в папку ~/bin"
+    echo -e "      (sync_1.sh, sync_all.sh, sync_1_aliases.sh, sync_backuper.sh)"
+    echo -e "    - Конфиг-файлы и лист-файлы копируются в папаку ~/.config/sync"
+    echo -e "    - Иконки копируются в папаку ~/.local/share/icons/sync"
+    echo -e "    - .desktop-файлы копируются в папку ~/.local/share/applications"
+    echo -e "    - Скрипт с алиасами и автодополнением добавляется в ~/.bashrc"
+    echo -e ""
+    echo -e "Подробности о работе скриптов смотрите в справках соответствующих скриптов." 
+    echo -e ""
+    echo -e "Последние изменения"
+    echo -e "${LAST_CHANGES}"
+    echo -e ""
+    echo -e "${COPYRIGHT}"
 }
 
 

@@ -2,7 +2,23 @@
 set -euo pipefail
 trap 'logger -p error -t "SYNC_WATHER" "[$(date)] Ошибка в строке $LINENO: команда \"$BASH_COMMAND\""' ERR
 
+##
+##  Project     : sync_1
+##  Description : Слушатель изменений для синхронизации.
+##                Часть пакета индивидуальной синхронизации sync_1.
+##  File        : sync_1.sh
+##  Author      : Ariv <ariv@meta.ua> | https://github.com/arivm7
+##  Org         : RI-Network, Kiev, UK
+##  License     : GPL v3
+##    
+##  Copyright (C) 2004-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK
+##
+
+
+
+
 VERSION="0.2.2-alfa (2025-08-25)"
+COPYRIGHT="Copyright (C) 2004-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK"
 LAST_CHANGES="\
 v0.2.2 (2025-08-25): Добавлено полное описание работы скрипта
 v0.2.1 (2025-08-05): Исправление механизма передачи параметров с sync_1
@@ -12,7 +28,6 @@ v0.2.0 (2025-07-10): Базовый функционал
 
 
 APP_TITLE="Слушатель изменений и автосинхронизатор"
-COPYRIGHT="(c) 2004-2025 RI-Network, tech support."         # Авторские права
 APP_NAME=$(basename "$0")                                   # Полное имя скрипта, включая расширение
 APP_PATH=$(cd "$(dirname "$0")" && pwd)                     # Путь размещения исполняемого скрипта
 FILE_NAME="${APP_NAME%.*}"                                  # Убираем расширение (если есть), например ".sh"
@@ -38,6 +53,7 @@ VERBOSE=0                                                   # Подробный
     SHOW_LOG="LOG"                              # Показать логи
     SHOW_DEST="SHOW_DEST"                       # Показывает dest-строку
     SHOW_TEST="TEST"                            # Только проверить структуру
+    SHOW_CLOUD_STAT="SHOW_CLOUD_STAT"           # Показывает статус сервера
     SHOW_CLOUD_CMD="SHOW_CLOUD_CMD"             # Показывает команду сервера
     SYNC_CMD_REGULAR="REGULAR"
     SYNC_CMD_UP="UP"
@@ -54,8 +70,8 @@ VERBOSE=0                                                   # Подробный
 
 
 ##
-##  ============================================================================
-##  [CONFIG START] Начало секции конфига
+##  [CONFIG START] ============================================================================
+##  Начало секции конфига
 ##
 
 ##
@@ -77,7 +93,8 @@ APP_AWK_PKG="gawk"                          # пакет, из которого 
 # APP_ENVSUBST="/usr/bin/envsubst"
 # APP_ENVSUBST_PKG="gettext"
 
-SLEEP_WAIT=30                               # Время ожидния перед выполнением команды синхронизации
+WAIT_CHANGES=30                               # Время ожидния перед выполнением команды синхронизации
+
 
 
 
@@ -115,8 +132,8 @@ EDITOR="nano"
 
 
 ##
-##  [CONFIG END] Конец секции конфига
-##  ----------------------------------------------------------------------------
+##  Конец секции конфига
+##  [CONFIG END] ----------------------------------------------------------------------------
 ##
 
 
@@ -206,7 +223,12 @@ get_abs_path() {
 
 #
 #  Записывает в конфиг файл фрагмент этого же скрипта между строками, содержащими [КОНФИГ СТАРТ] и [КОНФИГ ЕНД] 
-#  Используемые глобальные переменные 0 и CONFIG_FILE
+#  Используемые глобальные переменные:
+#       $0
+#       $CONFIG_PATH
+#       $CONFIG_FILE
+#       $APP_AWK
+#       $DRY_RUN
 #
 save_config_file()
 {
@@ -228,12 +250,13 @@ save_config_file()
 read_config_file()
 {
     #
-    # Перепределение переменных из конфиг-файла
+    # Переопределение переменных из конфиг-файла
     # Если конфиг-файла нет, то создаём его
-    # load_config
+    # load_config()
     #
     if [ -f "${CONFIG_FILE}" ]; then
         # shellcheck source="${CONFIG_PATH}/${FILE_NAME}.conf"
+        # shellcheck disable=SC1091
         source "${CONFIG_FILE}"
     else
         save_config_file
@@ -279,12 +302,17 @@ ${COLOR_USAGE}${APP_TITLE}${COLOR_OFF}
 Для этих папок устанавливается слушатель изменений ${COLOR_FILENAME}$(basename "${APP_INOTIFYWAIT}")${COLOR_OFF}.
 Когда происходит изменение, то запускается синхронизатор (${COLOR_FILENAME}$(basename "${APP_S1}")${COLOR_OFF}), 
 только не в дефолтном режиме, а в режиме отправки данных на сервер.
-Вместо ${COLOR_STATUS}${SYNC_CMD_REGULAR}${COLOR_OFF} выполняется ${COLOR_STATUS}${SYNC_CMD_UP}${COLOR_OFF}
-Если серер в статусе ${COLOR_STATUS}${SYNC_CMD_PAUSE}${COLOR_OFF}, то синхронизируется командой ${COLOR_STATUS}${SYNC_CMD_UP_EDIT}${COLOR_OFF}
+
+Поскольку Вы запустили этот скрипт, то Вы хотите, чтобы все изменения 
+(создание, удаление, переименование, изменение файлов)
+автоматически отправлялись на сервер. И эти изменения считаются основными.
+
+По этому, вместо ${COLOR_STATUS}${SYNC_CMD_REGULAR}${COLOR_OFF} выполняется ${COLOR_STATUS}${SYNC_CMD_CLOUD_UP_INIT}${COLOR_OFF}
+Если сервер в статусе ${COLOR_STATUS}${SYNC_CMD_PAUSE}${COLOR_OFF}, то синхронизируется командой ${COLOR_STATUS}${SYNC_CMD_UP_EDIT}${COLOR_OFF}
 
 В конфиге есть параметры:
 
-${COLOR_USAGE}SLEEP_WAIT${COLOR_OFF} -- это время ожидния перед выполнением команды синхронизации, 
+${COLOR_USAGE}WAIT_CHANGES${COLOR_OFF} -- это время ожидния перед выполнением команды синхронизации, 
 чтобы не дёргать синхронизатор каждуюу секунду, учитывая что синхронизация 
 сама по себе занимает несколько секунд, то есть смысл собрать какое-то 
 количество изменений и синхронизировать их вместе.
@@ -296,12 +324,13 @@ ${COLOR_INFO}Использование:${COLOR_OFF}
     ${APP_NAME} [опции]
 
 ${COLOR_INFO}Опции:${COLOR_OFF}
-    ${COLOR_USAGE}--edit-conf, -c${COLOR_OFF}   Открыть конфигурационный файл в редакторе
-    ${COLOR_USAGE}--edit-list, -l${COLOR_OFF}   Открыть список папок для наблюдения в редакторе
+    ${COLOR_USAGE}--edit-conf, -ec${COLOR_OFF}  Открыть конфигурационный файл в редакторе
+    ${COLOR_USAGE}--edit-list, -el${COLOR_OFF}  Открыть список папок для наблюдения в редакторе
     ${COLOR_USAGE}--dry-run, -n${COLOR_OFF}     Только инициализировать конфиг, без выполнения действий
+    ${COLOR_USAGE}--verbose, -v${COLOR_OFF}     Подробный вывод
     ${COLOR_USAGE}--help, -h${COLOR_OFF}        Показать это сообщение
     ${COLOR_USAGE}--usage, -u${COLOR_OFF}       Краткая справка
-    ${COLOR_USAGE}--version, -v${COLOR_OFF}     Версия скрипта
+    ${COLOR_USAGE}--version, -V${COLOR_OFF}     Версия скрипта
 
 ${COLOR_INFO}Примечание:${COLOR_OFF}
     Файл со списком папок ${COLOR_FILENAME}$(basename "${LIST_FILE}")${COLOR_OFF} должен содержать пути, одна строка — один путь.
@@ -345,31 +374,31 @@ print_version()
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --edit-conf|-c)
+            -ec|--edit-conf)
                 echo "Редактирование конфига: ${CONFIG_FILE}"
                 exec ${EDITOR} "${CONFIG_FILE}"
                 exit 0;
                 ;;
-            --edit-list|-l)
+            -el|--edit-list)
                 echo "Редактирование списка: ${LIST_FILE}"
                 exec "${EDITOR}" "${LIST_FILE}"
                 exit 0;
                 ;;
-            --dry-run|-n)
+            -n|--dry-run)
                 DRY_RUN=1
                 ;;
-            --verbose|-V)
+            -v|--verbose)
                 VERBOSE=1
                 ;;
-            --help|-h)
+            -h|--help)
                 print_help
                 exit 0
                 ;;
-            --usage|-u)
+            -u|--usage)
                 print_usage
                 exit 0
                 ;;
-            --version|-v)
+            -V|--version)
                 print_version
                 exit 0
                 ;;
@@ -399,7 +428,7 @@ read_watch_folders()
 
     # Проверка наличия конфигурационного файла
     [[ -f "${LIST_FILE}" ]] || {
-        exit_with_msg "Файл конфигурации ${LIST_FILE} не найден" 1
+        exit_with_msg "Файл списка ${LIST_FILE} не найден" 1
     }
 
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -424,7 +453,8 @@ read_watch_folders()
 
         # Проверка на существование директории
         if [[ ! -d "$line" ]]; then
-            exit_with_msg "Несуществующая папка: ${COLOR_FILENAME}${line}${COLOR_OFF}" 1
+            exit_with_msg "Несуществующая папка: ${COLOR_FILENAME}${line}${COLOR_OFF}\n\
+            Исправьте список папок синхронизации ${COLOR_FILENAME}${LIST_FILE}${COLOR_OFF}." 1
         fi
 
         # Добавление пути в массив
@@ -433,7 +463,7 @@ read_watch_folders()
 
     # Проверка, что есть что мониторить
     if [[ ${#WATCH_DIRS[@]} -eq 0 ]]; then
-        exit_with_msg "Нет папок для наблюдения. Проверьте конфигурацию." 1
+        exit_with_msg "Нет папок для наблюдения. Проверьте файл-список ${COLOR_FILENAME}${LIST_FILE}${COLOR_OFF}." 1
     else
         echo -e "Считано папок: ${COLOR_INFO}${#WATCH_DIRS[@]}${COLOR_OFF}"
     fi
@@ -458,6 +488,7 @@ read_config_file
     echo -e "[${COLOR_INFO}ii${COLOR_OFF}] Список: '${COLOR_FILENAME}${LIST_FILE}${COLOR_OFF}'";
     echo -e "[${COLOR_INFO}ii${COLOR_OFF}] sync_1: '${COLOR_FILENAME}${APP_S1}${COLOR_OFF}'";
 }
+
 parse_args "$@"
 
 check_dependencies_required
@@ -469,9 +500,9 @@ read_watch_folders
 # Отображение наблюдаемых директорий
 echo -e "${COLOR_USAGE}===> Мониторинг следующих папок:${COLOR_OFF}"
 for dir in "${WATCH_DIRS[@]}"; do
-    cmd="${APP_S1} ${dir} ${SHOW_CLOUD_CMD}"
-    cloud_cmd="$(${cmd})" || { exit_with_msg "Ошибка получения данных с сервера" 1; }
-    printf "     ${COLOR_FILENAME}%-30s${COLOR_OFF} | CLOUD CMD: ${COLOR_STATUS}%s${COLOR_OFF}\n" "$dir" "${cloud_cmd}"
+    cloud_stat="$("${APP_S1}" "${dir}" "${SHOW_CLOUD_STAT}")" || { exit_with_msg "Ошибка получения данных с сервера" 1; }
+    cloud_cmd="$("${APP_S1}" "${dir}" "${SHOW_CLOUD_CMD}")" || { exit_with_msg "Ошибка получения данных с сервера" 1; }
+    printf "     ${COLOR_FILENAME}%-30s${COLOR_OFF} | CLOUD STAT: ${COLOR_STATUS}%-8s${COLOR_OFF} | CLOUD CMD: ${COLOR_STATUS}%-8s${COLOR_OFF} |\n" "$dir" "${cloud_stat}" "${cloud_cmd}"
 done
 echo -e "${COLOR_USAGE}===> Ctrl+C для выхода${COLOR_OFF}"
 
@@ -483,7 +514,7 @@ inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS
     # ⛔️ Игнорируем внутренние/временные/служебные файлы
     for pattern in "${IGNORE_PATTERNS[@]}"; do
         if [[ "${path}${file}" =~ $pattern ]]; then
-            [[ ${VERBOSE} -eq 1 ]] && echo -e "⛔️ ${COLOR_INFO}Пропущен по шаблону '${pattern}': ${COLOR_FILENAME}${path}${file}${COLOR_OFF}";
+            [[ ${VERBOSE} -eq 1 ]] && echo -e "$(date '+%H:%M:%S') ⛔️ ${COLOR_INFO}Пропущен по шаблону '${pattern}': ${COLOR_FILENAME}${path}${file}${COLOR_OFF}";
             continue 2
         fi
     done
@@ -491,29 +522,38 @@ inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS
     echo -e "\n🟡 Обнаружено изменение"
     echo -e "${COLOR_USAGE}$(date +'%F %T')${COLOR_OFF} | ${COLOR_INFO}${action}${COLOR_OFF} → ${COLOR_FILENAME}${path}${file}${COLOR_OFF}"
 
-    cloud_cmd=$("${APP_S1}" "${path}" "${SHOW_CLOUD_CMD}") || { exit_with_msg "Ошибка получения данных с сервера" 1; }
-    echo -e "CMD_CLOUD: ${cloud_cmd}"
+    cloud_stat="$("${APP_S1}" "${path}" "${SHOW_CLOUD_STAT}")" || { exit_with_msg "Ошибка получения статуса сервера для папки '${path}'" 1; }
+    cloud_cmd="$("${APP_S1}" "${path}" "${SHOW_CLOUD_CMD}")" || { exit_with_msg "Ошибка получения команды сервера для папки '${path}'" 1; }
+    # echo -e "CMD_CLOUD: ${cloud_cmd}"
     case "${cloud_cmd}" in
         "${SYNC_CMD_REGULAR}")
-            cmd=("${APP_S1}" "${path}" "${SYNC_CMD_UP}")
+            cmd=("${APP_S1}" "${path}" "${SYNC_CMD_UP_INIT}")
             ;;
         "${SYNC_CMD_PAUSE}")
             cmd=("${APP_S1}" "${path}" "${SYNC_CMD_UP_EDIT}")
             ;;
         *)
-            cmd=("${APP_S1}" "${path}")
+            cmd=()
             ;;
     esac
-    
-    echo "RUN: ${cmd[*]}"
 
-    # Подождать перед тем, ка грузить файлы
-    sleep "${SLEEP_WAIT}"
-    {   # СИНХРОНИЗИРУЕМ
-        trap '' SIGINT  # Выключить ловлю Ctrl+C
-        "${cmd[@]}"
-        trap - SIGINT   # Восстановить ловлю Ctrl+C
-    }
+    if ((${#cmd[@]})); then
+        # Показать какая команда выполнится
+        echo -e "RUN: ${COLOR_INFO}${cmd[*]}${COLOR_OFF}"
+        # Подождать перед тем, как грузить файлы
+        echo -e "Через ${COLOR_INFO}${WAIT_CHANGES} сек${COLOR_OFF} будет выполнена синхронизация..."
+        sleep "${WAIT_CHANGES}"
+
+        {   # СИНХРОНИЗИРУЕМ
+            trap '' SIGINT  # Выключить ловлю Ctrl+C
+            "${cmd[@]}"
+            trap - SIGINT   # Восстановить ловлю Ctrl+C
+        }
+    else
+        printf "     ${COLOR_FILENAME}%-30s${COLOR_OFF} | CLOUD STAT: ${COLOR_STATUS}%s${COLOR_OFF} | CLOUD CMD: ${COLOR_STATUS}%s${COLOR_OFF}\n" \
+                "$path" "${cloud_stat}" "${cloud_cmd}"
+    fi
+
     echo -e "==== End UP [ Ctrl+C to stop ] ===="
 done
 

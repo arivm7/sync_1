@@ -1,0 +1,20 @@
+[Desktop Entry]
+Comment[ru_RU]=Наблюдатель. Из пакета индивидуальной синхронизации sync_1
+Comment=Наблюдатель. Из пакета индивидуальной синхронизации sync_1
+Comment[ru_UA]=Наблюдатель. Из пакета индивидуальной синхронизации sync_1
+Exec=/home/ar/Programing/shell/sync_1/sync_watcher.sh
+GenericName[ru_RU]=
+GenericName=
+GenericName[ru_UA]=
+Icon=/home/ar/Programing/shell/sync_1/img/sync_watcher_icon.svg
+MimeType=
+Name[ru_RU]=sync Watcher
+Name=sync Watcher
+Name[ru_UA]=sync Watcher
+Path=/home/ar/Programing/shell/sync_1
+StartupNotify=true
+Terminal=true
+TerminalOptions=
+Type=Application
+X-KDE-SubstituteUID=false
+X-KDE-Username=

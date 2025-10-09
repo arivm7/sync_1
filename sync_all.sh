@@ -2,6 +2,18 @@
 set -euo pipefail
 trap 'logger -p error -t "SYNC_ALL" "[$(date)] Ошибка в строке $LINENO: команда \"$BASH_COMMAND\""' ERR
 
+##
+##  Project     : sync_1
+##  Description : Скрипт для синхронизации списка каталогов
+##                Часть пакета индивидуальной синхронизации sync_1.
+##  File        : sync_1.sh
+##  Author      : Ariv <ariv@meta.ua> | https://github.com/arivm7
+##  Org         : RI-Network, Kiev, UK
+##  License     : GPL v3
+##    
+##  Copyright (C) 2006-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK
+##
+
 
 
 # Определение: запуск из cron или вручную
@@ -15,17 +27,18 @@ fi
 
 
 APP_TITLE="Скрипт массовой сихронизации. Часть пакета персональной синхронизации sync_1"
-COPYRIGHT="(c) 2004-2025 RI-Network, tech support."         # Авторские права
-VERSION="1.7.0 (2025-07-10)"
+COPYRIGHT="Copyright (C) 2006-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK"
+VERSION="1.8.0 (2025-10-25)"
 LAST_CHANGES="\
-v1.2.6 (2025-04-25): Рефакторинг run_one_dir()
-v1.2.7 (2025-05-08): Добавлен параметр LOG для показа логов работы скрипта
-v1.3.0 (2025-05-17): Добавлен параметр SHOW_DEST показывает облачные пути
-v1.3.1 (2025-05-23): Починка того, что сломалось после рефактринга sync_1
-v1.3.2 (2025-06-02): Перенос конфигов в системную пользовательскую папаку конфигов
-v1.4.0 (2025-06-12): Добавлена команда TEST, которая проверяет и показывает состояние синхронизатора
-v1.6.0 (2025-06-27): Добавлен конфиг и команда редактирования конфига --edit-conf|-e
+v1.8.0 (2025-10-25): Добавлена поддержка команды SHOW_CLOUD_STAT
 v1.7.0 (2025-07-10): Добавлена поддержка команды SHOW_CLOUD_CMD
+v1.6.0 (2025-06-27): Добавлен конфиг и команда редактирования конфига --edit-conf|-e
+v1.4.0 (2025-06-12): Добавлена команда TEST, которая проверяет и показывает состояние синхронизатора
+v1.3.2 (2025-06-02): Перенос конфигов в системную пользовательскую папаку конфигов
+v1.3.1 (2025-05-23): Починка того, что сломалось после рефактринга sync_1
+v1.3.0 (2025-05-17): Добавлен параметр SHOW_DEST показывает облачные пути
+v1.2.7 (2025-05-08): Добавлен параметр LOG для показа логов работы скрипта
+v1.2.6 (2025-04-25): Рефакторинг run_one_dir()
 "
 
 
@@ -44,13 +57,47 @@ CONFIG_PATH="${XDG_CONFIG_HOME:-${HOME}/.config}/${CONFIG_DIRNAME}"
 CONFIG_FILE="${CONFIG_PATH}/${FILE_NAME}.conf"
 SYNC_ALL_LIST_FILE="${CONFIG_PATH}/${FILE_NAME}.list"       # Список папок для синхронизации
 
+# Поддерживаемые пользовательские комманды
+SYNC_CMD_REGULAR="REGULAR"
+SYNC_CMD_UP="UP"
+SYNC_CMD_DL="DL"
+SYNC_CMD_UP_INIT="UP_INIT"
+SYNC_CMD_DL_INIT="DL_INIT"
+SYNC_CMD_PAUSE="PAUSE"
+SYNC_CMD_UP_EDIT="UP_EDIT"
+SYNC_CMD_UNPAUSE="UNPAUSE"
+SHOW_LOG="LOG"                      # Показывает последние строки системного лога
+SHOW_DEST="SHOW_DEST"               # Показывает dest-строку
+SHOW_TEST="TEST"                    # Только проверить структуру
+SHOW_CLOUD_STAT="SHOW_CLOUD_STAT"   # Показывает статус сервера
+SHOW_CLOUD_CMD="SHOW_CLOUD_CMD"     # Показывает команду сервера
+
+# Список допустимых команд
+VALID_COMMANDS=(
+    # Синхронизируют
+    "${SYNC_CMD_REGULAR}"
+    "${SYNC_CMD_UP}"
+    "${SYNC_CMD_DL}"
+    "${SYNC_CMD_UP_INIT}"
+    "${SYNC_CMD_DL_INIT}"
+    "${SYNC_CMD_PAUSE}"
+    "${SYNC_CMD_UP_EDIT}"
+    "${SYNC_CMD_UNPAUSE}"
+    # Показывают
+    "${SHOW_LOG}"
+    "${SHOW_DEST}"
+    "${SHOW_TEST}"
+    "${SHOW_CLOUD_STAT}"
+    "${SHOW_CLOUD_CMD}"
+)
+
 VERB_MODE=$([[ "$IS_CRON" == false ]] && echo true || echo false) # Подробный вывод всех действий. Если false -- то "тихий режим"
 
 
 
 ##
-##  ============================================================================
-##  [CONFIG START] Начало секции конфига
+##  [CONFIG START] =========================================================================
+##  Начало секции конфига
 ##
 
 ##
@@ -72,22 +119,28 @@ WAIT_END=5                          # seconds для просмотря резу
 COLOR_USAGE="\e[1;32m"              # Терминальный цвет для вывода переменной статуса
 COLOR_ERROR="\e[0;31m"              # Терминальный цвет для вывода ошибок
 COLOR_INFO="\e[0;34m"               # Терминальный цвет для вывода информации (об ошибке или причине выхода)
-COLOR_FILENAME="\e[1;36m"         # Терминальный цвет для вывода имён файлов
+COLOR_FILENAME="\e[1;36m"           # Терминальный цвет для вывода имён файлов
+COLOR_OK="\033[0;32m"               # Терминальный цвет для вывода Ok-сообщения
 COLOR_OFF="\e[0m"                   # Терминальный цвет для сброса цвета
 
 # Программа-редактор для редактирования конфиг-файла и списка папаок для копирования
 # (без пробелов в пути/и/названии)
 EDITOR="nano"
 
-
 APP_AWK="/usr/bin/awk"
-# VERB_MODE=1                               # Режим подробного вывода. # Не реализован
 DRY_RUN=0                                   # Только посчитать. Без файловых операций
 
+# Параметр VERB_MODE -- режим подробного вывода всех действий.
+# Сейчас он определяется автоматически: если запускается из это cron, systemd,
+# или другим фоновым способом, то VERB_MODE=0, иначе VERB_MODE=1
+# Указав тот параметр явно можно принудительно установить режим вывода.
+# VERB_MODE=1
+
 ##
-##  [CONFIG END] Конец секции конфига
-##  ----------------------------------------------------------------------------
+##  Конец секции конфига
+##  [CONFIG END] ---------------------------------------------------------------------------
 ##
+
 
 
 #
@@ -125,41 +178,6 @@ read_config_file()
         save_config_file
     fi
 }
-
-
-
-# Поддерживаемые пользовательские комманды
-SYNC_CMD_REGULAR="REGULAR"
-SYNC_CMD_UP="UP"
-SYNC_CMD_DL="DL"
-SYNC_CMD_UP_INIT="UP_INIT"
-SYNC_CMD_DL_INIT="DL_INIT"
-SYNC_CMD_PAUSE="PAUSE"
-SYNC_CMD_UP_EDIT="UP_EDIT"
-SYNC_CMD_UNPAUSE="UNPAUSE"
-SHOW_LOG="LOG"                      # Показывает последние строки системного лога
-SHOW_DEST="SHOW_DEST"               # Показывает dest-строку
-SHOW_TEST="TEST"                    # Только проверить структуру
-SHOW_CLOUD_CMD="SHOW_CLOUD_CMD"     # Показывает команду сервера
-
-# Список допустимых команд
-VALID_COMMANDS=(
-    # Синхронизируют
-    "${SYNC_CMD_REGULAR}"
-    "${SYNC_CMD_UP}"
-    "${SYNC_CMD_DL}"
-    "${SYNC_CMD_UP_INIT}"
-    "${SYNC_CMD_DL_INIT}"
-    "${SYNC_CMD_PAUSE}"
-    "${SYNC_CMD_UP_EDIT}"
-    "${SYNC_CMD_UNPAUSE}"
-    # Показывают
-    "${SHOW_LOG}"
-    "${SHOW_DEST}"
-    "${SHOW_TEST}"
-    "${SHOW_CLOUD_CMD}"
-)
-
 
 
 
@@ -219,96 +237,100 @@ exit_with_msg() {
 #
 print_help()
 {
-cat << EOF
+echo -e "$(cat << EOF
 ${APP_TITLE}
 Скрипт: ${APP_NAME} Версия: ${VERSION}
 Папка размещения: "${APP_PATH}"
 
 Скрипт массовой синхронизации списка папок.
 Вспомогательный скрипт из комплекта персональной синхронизации sync_1.
-Подробности о работе см. основной скрипт "sync_1.sh --help"
+Подробности о работе см. основной скрипт '${COLOR_USAGE}sync_1.sh --help${COLOR_OFF}'
 
-Список файлов для синхронизации берётся из файла ${SYNC_ALL_LIST_FILE}
+Список файлов для синхронизации берётся из файла ${COLOR_FILENAME}${SYNC_ALL_LIST_FILE}${COLOR_OFF}
 в котором просто перечислены папки для синхронизации 
 и не обязательное текстовое сообщение-баннер для оформления лога синхронизации.
 
 Использование:
-    ${APP_NAME}  [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:0:5}"); echo "${str//|/ | }";) ]
+    ${COLOR_USAGE}${APP_NAME}${COLOR_OFF}  [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:0:5}"); echo "${str//|/ | }";) ]
                  [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:5:3}"); echo "${str//|/ | }";) ]
                  [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:8}");  echo "${str//|/ | }";) ]
                  По умолчанию: ${SYNC_CMD_REGULAR}
 
-    ${SYNC_CMD_REGULAR}   -- действие по умолчанию. Указывать не обязательно.
+    ${COLOR_USAGE}${SYNC_CMD_REGULAR}${COLOR_OFF}   -- действие по умолчанию. Указывать не обязательно.
                  Запись данных на сервер (${SYNC_CMD_UP}) и скачивание данных с сервера (${SYNC_CMD_DL}) 
                  без удаления расхождений.
-                 
-    ${SYNC_CMD_UP}        -- Запись данных на сервер без удаления.
 
-    ${SYNC_CMD_DL}        -- Чтение данных с сервера без удаления.
+    ${COLOR_USAGE}${SYNC_CMD_UP}${COLOR_OFF}        -- Запись данных на сервер без удаления.
 
-    ${SYNC_CMD_DL_INIT}   -- Загрузка данных с сервера на локальный хост 
+    ${COLOR_USAGE}${SYNC_CMD_DL}${COLOR_OFF}        -- Чтение данных с сервера без удаления.
+
+    ${COLOR_USAGE}${SYNC_CMD_DL_INIT}${COLOR_OFF}   -- Загрузка данных с сервера на локальный хост 
                  с *удалением* расхождений на локальном хосте.
 
-    $SYNC_CMD_UP_INIT   -- Запись данных с локального хоста на сервер 
+    ${COLOR_USAGE}${SYNC_CMD_UP_INIT}${COLOR_OFF}   -- Запись данных с локального хоста на сервер 
                  с *удалением* расхождений на сервере, и установка для всех хостов 
                  статуса ${SYNC_CMD_DL_INIT} для обязательной загрузки изменений.
 
-    ${SYNC_CMD_PAUSE}     -- Обмен данными не происходит. 
+    ${COLOR_USAGE}${SYNC_CMD_PAUSE}${COLOR_OFF}     -- Обмен данными не происходит. 
                  Режим для изменений данных на самом сервере. 
                  Никаая комманда с серера ничего не скачивает. 
                  Для изменения файлов на сервере в этом режиме используется комманда ${SYNC_CMD_UP_EDIT}. 
 
-    ${SYNC_CMD_UP_EDIT}   -- Отправляет данные на сервер с удалением расхождений на стороне сервера.
+    ${COLOR_USAGE}${SYNC_CMD_UP_EDIT}${COLOR_OFF}   -- Отправляет данные на сервер с удалением расхождений на стороне сервера.
                  Работает только если статус сервера ${SYNC_CMD_PAUSE}. 
                  Работает как ${SYNC_CMD_UP_INIT} только НЕ изменяет статус синхронизации для клиентов.
 
-    ${SYNC_CMD_UNPAUSE}   -- Обмен данными не происходит. 
+    ${COLOR_USAGE}${SYNC_CMD_UNPAUSE}${COLOR_OFF}   -- Обмен данными не происходит. 
                  Для всех хостов устанавливается статус ${SYNC_CMD_DL_INIT} 
 
-    ${SHOW_DEST} -- Обмен данными не происходит. 
+    ${COLOR_USAGE}${SHOW_DEST}${COLOR_OFF} -- Обмен данными не происходит. 
                  Показать строку dest -- адрес папки на сервере. 
 
-    ${SHOW_CLOUD_CMD} -- Обмен данными не происходит. 
-                 Показать статус команд сервера для всех папок
-                 
-    ${SHOW_TEST}      -- Тестирует настройки синхронизатора.
+    ${COLOR_USAGE}${SHOW_CLOUD_STAT}${COLOR_OFF} -- Обмен данными не происходит. 
+                 Показать статус сервера для всех папок.
+
+    ${COLOR_USAGE}${SHOW_CLOUD_CMD}${COLOR_OFF} -- Обмен данными не происходит. 
+                 Показать команду сервера для всех папок.
+
+    ${COLOR_USAGE}${SHOW_TEST}${COLOR_OFF}      -- Тестирует настройки синхронизаторов.
                  Обмен данными не происходит. 
                  Только проверяет и показывает локальную струткуру 
                  и проверяет доступ к папке на сервере. 
 
-    ${SHOW_LOG} [<количество_строк>]
+    ${COLOR_USAGE}${SHOW_LOG}${COLOR_OFF} [<количество_строк>]
                  Показыват указанное количство строк из лог-файла. 
                  По умолчанию количеcтво = ${LOG_COUNT_ROWS}
 
-    --help      | -h    Это описание
-    --usage     | -u    Краткая справка по использованию
-    --version   | -v    Версия скрипта
-    --edit-conf | -c    Редактирование конфига
-    --edit-list | -l    Редактирование списка для синхронизации
+    ${COLOR_USAGE}--help${COLOR_OFF}      | ${COLOR_USAGE}-h${COLOR_OFF}    Это описание
+    ${COLOR_USAGE}--usage${COLOR_OFF}     | ${COLOR_USAGE}-u${COLOR_OFF}    Краткая справка по использованию
+    ${COLOR_USAGE}--verbose${COLOR_OFF}   | ${COLOR_USAGE}-v${COLOR_OFF}    Подробный режим вывода всех действий
+    ${COLOR_USAGE}--version${COLOR_OFF}   | ${COLOR_USAGE}-V${COLOR_OFF}    Версия скрипта
+    ${COLOR_USAGE}--edit-conf${COLOR_OFF} | ${COLOR_USAGE}-ec${COLOR_OFF}   Редактирование конфига
+    ${COLOR_USAGE}--edit-list${COLOR_OFF} | ${COLOR_USAGE}-el${COLOR_OFF}   Редактирование списка для синхронизации
 
-ВАЖНО:
+${COLOR_INFO}ВАЖНО:${COLOR_OFF}
 При добавлении скрипта в crontab нужно добавить в cron-скрипт переменные окружения, 
-               которые нужны этому скрипту, и которые отсутсвуют при выполнении скрипта 
-               не в пользовательском окружении: cron, systemd, или другой фоновый запуск.
-               примерно так:
+    которые нужны этому скрипту, и которые отсутсвуют при выполнении скрипта 
+    не в пользовательском окружении: cron, systemd, или другой фоновый запуск.
+    примерно так:
 
-               USER=${USER}
-               HOME=${HOME}
-               PATH=/usr/local/bin:/usr/bin:/bin:${HOME}/bin:${HOME}/.local/bin
-               SHELL=/bin/bash
-               BASH_ENV=${HOME}/.bashrc
+    ${COLOR_CODE}USER=${USER}
+    HOME=${HOME}
+    PATH=/usr/local/bin:/usr/bin:/bin:${HOME}/bin:${HOME}/.local/bin
+    SHELL=/bin/bash
+    BASH_ENV=${HOME}/.bashrc
 
-               1  *  *  *  *    ${HOME}/bin/sync_all.sh
+    1  *  *  *  *    ${HOME}/bin/sync_all.sh${COLOR_OFF}
 
-               для контроля исполнения скрипта можно добавить логирование работы самого скрипта:
-               1  *  *  *  *    ${HOME}/bin/sync_all.sh >> ${HOME}/sync_all_cron.log 2>&1
+    для контроля исполнения скрипта можно добавить логирование работы самого скрипта:
+    ${COLOR_CODE}1  *  *  *  *    ${HOME}/bin/sync_all.sh >> ${HOME}/sync_all_cron.log 2>&1${COLOR_OFF}
 
 Последние изменения
 ${LAST_CHANGES}
 
 ${COPYRIGHT}
-
 EOF
+)"
 }
 
 
@@ -318,17 +340,20 @@ EOF
 #
 print_usage()
 {
-cat << EOF
+echo -e "$(cat << EOF
 ${APP_TITLE}
 Использование:
     ${APP_NAME}  [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:0:5}"); echo "${str//|/ | }";) ]
                  [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:5:3}"); echo "${str//|/ | }";) ]
                  [ $(str=$(IFS="|"; echo "${VALID_COMMANDS[*]:8}");  echo "${str//|/ | }";) ]
                  По умолчанию: ${SYNC_CMD_REGULAR}
-                 [ --help | -h | --usage | -u | --version | -v ]
-                 [ --edit-conf | -c | --edit-list | -l ]
+                 [ --help | -h | --usage | -u | --version | -V | --verbose | -v ]
+                 [ --edit-conf | -ec | --edit-list | -el ]
                  [ ${SHOW_LOG} <количество_строк> ]
+
+${COPYRIGHT}
 EOF
+)"
 }
 
 
@@ -338,13 +363,14 @@ EOF
 #
 print_version()
 {
-    echo "${APP_TITLE}"
-    echo "Скрипт       : ${APP_NAME}"
-    echo "Версия       : ${VERSION}"
-    echo "Путь скрипта : \"${APP_PATH}\""
-    echo "Последние изменения"
-    echo "${LAST_CHANGES}"
-    echo ""
+    echo -e "${APP_TITLE}"
+    echo -e "Скрипт       : ${APP_NAME}"
+    echo -e "Версия       : ${VERSION}"
+    echo -e "Путь скрипта : \"${APP_PATH}\""
+    echo -e "Последние изменения"
+    echo -e "${LAST_CHANGES}"
+    echo -e ""
+    echo -e "${COPYRIGHT}"
 }
 
 
@@ -488,28 +514,31 @@ read_config_file
 
 
 case "${1:-}" in
-  -h|--help)
-    print_help
-    exit 0
-    ;;
-  -u|--usage)
-    print_usage
-    exit 0
-    ;;
-  -v|--version)
-    print_version
-    exit 0
-    ;;
-  -c|--edit-conf)
-    echo "Редактирование конфига: ${CONFIG_FILE}"
-    exec "${EDITOR}" "${CONFIG_FILE}"
-    exit 0
-    ;;
-  -l|--edit-list)
-    echo "Редактирование списка: ${SYNC_ALL_LIST_FILE}"
-    exec "${EDITOR}" "${SYNC_ALL_LIST_FILE}"
-    exit 0
-    ;;
+    -h|--help)
+        print_help
+        exit 0
+        ;;
+    -u|--usage)
+        print_usage
+        exit 0
+        ;;
+    -V|--version)
+        print_version
+        exit 0
+        ;;
+    -v|--verbose)
+        VERB_MODE=1
+        ;;
+    -ec|--edit-conf)
+        echo "Редактирование конфига: ${CONFIG_FILE}"
+        exec "${EDITOR}" "${CONFIG_FILE}"
+        exit 0
+        ;;
+    -el|--edit-list)
+        echo "Редактирование списка: ${SYNC_ALL_LIST_FILE}"
+        exec "${EDITOR}" "${SYNC_ALL_LIST_FILE}"
+        exit 0
+        ;;
 esac
 
 
