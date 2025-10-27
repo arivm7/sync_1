@@ -17,9 +17,10 @@ trap 'logger -p error -t "SYNC_WATHER" "[$(date)] Ошибка в строке $
 
 
 
-VERSION="0.2.2-alfa (2025-08-25)"
+VERSION="0.3.0-alfa (2025-10-27)"
 COPYRIGHT="Copyright (C) 2004-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK"
 LAST_CHANGES="\
+v0.3.0 (2025-10-27): Исправлена передача команды в синхронизатор: передаётся не папка, где произошло событие, а корневая папка для синхронизации. Это устранило ошибку прекращения работы скрипта при удалении локальной папки, что ранее вызывало ошибку в синхронизаторе 'Папка не найдена'.
 v0.2.2 (2025-08-25): Добавлено полное описание работы скрипта
 v0.2.1 (2025-08-05): Исправление механизма передачи параметров с sync_1
 v0.2.0 (2025-07-10): Базовый функционал
@@ -522,15 +523,34 @@ inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS
     echo -e "\n🟡 Обнаружено изменение"
     echo -e "${COLOR_USAGE}$(date +'%F %T')${COLOR_OFF} | ${COLOR_INFO}${action}${COLOR_OFF} → ${COLOR_FILENAME}${path}${file}${COLOR_OFF}"
 
-    cloud_stat="$("${APP_S1}" "${path}" "${SHOW_CLOUD_STAT}")" || { exit_with_msg "Ошибка получения статуса сервера для папки '${path}'" 1; }
-    cloud_cmd="$("${APP_S1}" "${path}" "${SHOW_CLOUD_CMD}")" || { exit_with_msg "Ошибка получения команды сервера для папки '${path}'" 1; }
+    # Абсолютный путь к папке, где произошло событие
+    local_event_dir=$(get_abs_path "$path")
+
+        # Найти родительскую папку из WATCH_DIRS, которая содержит событие
+    parent_sync_dir=""
+    for watch_dir in "${WATCH_DIRS[@]}"; do
+        abs_watch_dir=$(get_abs_path "${watch_dir}")
+        if [[ "${local_event_dir}" == "${abs_watch_dir}"* ]]; then
+            parent_sync_dir="$abs_watch_dir"
+            break
+        fi
+    done
+
+    # Если не найдено соответствие — предупреждение и пропуск
+    if [[ -z "$parent_sync_dir" ]]; then
+        echo -e "${COLOR_ERROR}⚠️  Не удалось определить корневую папку синхронизации для:${COLOR_OFF} ${COLOR_FILENAME}${local_event_dir}${COLOR_OFF}"
+        continue
+    fi
+
+    cloud_stat="$("${APP_S1}" "${parent_sync_dir}" "${SHOW_CLOUD_STAT}")" || { exit_with_msg "Ошибка получения статуса сервера для папки '${path}'" 1; }
+    cloud_cmd="$("${APP_S1}" "${parent_sync_dir}" "${SHOW_CLOUD_CMD}")" || { exit_with_msg "Ошибка получения команды сервера для папки '${path}'" 1; }
     # echo -e "CMD_CLOUD: ${cloud_cmd}"
     case "${cloud_cmd}" in
         "${SYNC_CMD_REGULAR}")
-            cmd=("${APP_S1}" "${path}" "${SYNC_CMD_UP_INIT}")
+            cmd=("${APP_S1}" "${parent_sync_dir}" "${SYNC_CMD_UP_INIT}")
             ;;
         "${SYNC_CMD_PAUSE}")
-            cmd=("${APP_S1}" "${path}" "${SYNC_CMD_UP_EDIT}")
+            cmd=("${APP_S1}" "${parent_sync_dir}" "${SYNC_CMD_UP_EDIT}")
             ;;
         *)
             cmd=()
@@ -538,7 +558,7 @@ inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS
     esac
 
     if ((${#cmd[@]})); then
-        # Показать какая команда выполнится
+        # П оказать какая команда выполнится
         echo -e "RUN: ${COLOR_INFO}${cmd[*]}${COLOR_OFF}"
         # Подождать перед тем, как грузить файлы
         echo -e "Через ${COLOR_INFO}${WAIT_CHANGES} сек${COLOR_OFF} будет выполнена синхронизация..."
@@ -551,9 +571,9 @@ inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS
         }
     else
         printf "     ${COLOR_FILENAME}%-30s${COLOR_OFF} | CLOUD STAT: ${COLOR_STATUS}%s${COLOR_OFF} | CLOUD CMD: ${COLOR_STATUS}%s${COLOR_OFF}\n" \
-                "$path" "${cloud_stat}" "${cloud_cmd}"
+                "$parent_sync_dir" "${cloud_stat}" "${cloud_cmd}"
     fi
 
-    echo -e "==== End UP [ Ctrl+C to stop ] ===="
+    echo -e "==== End UP [ ${COLOR_INFO}Ctrl+C${COLOR_OFF} to stop ] ===="
 done
 
