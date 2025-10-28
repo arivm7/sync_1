@@ -1918,8 +1918,8 @@ log_info "CMD: $0 ${*@Q}"
 #   SYNC_CMD_PAUSE      SYNC_CMD_REGULAR    SYNC_CMD_DL         -
 #   SYNC_CMD_PAUSE      SYNC_CMD_REGULAR    SYNC_CMD_UP_INIT    -
 #   SYNC_CMD_PAUSE      SYNC_CMD_REGULAR    SYNC_CMD_DL_INIT    -
-#   SYNC_CMD_PAUSE      SYNC_CMD_REGULAR    SYNC_CMD_PAUSE      -
-#   SYNC_CMD_PAUSE      SYNC_CMD_REGULAR    SYNC_CMD_UP_EDIT    -
+#   SYNC_CMD_PAUSE      SYNC_CMD_REGULAR    SYNC_CMD_PAUSE      SYNC_CMD_PAUSE
+#   SYNC_CMD_PAUSE      SYNC_CMD_REGULAR    SYNC_CMD_UP_EDIT    SYNC_CMD_UP_EDIT, SYNC_CMD_PAUSE
 #   SYNC_CMD_PAUSE      SYNC_CMD_REGULAR    SYNC_CMD_UNPAUSE    -
 #
 #   SYNC_CMD_PAUSE      SYNC_CMD_DL_INIT    SYNC_CMD_REGULAR    -
@@ -1927,8 +1927,8 @@ log_info "CMD: $0 ${*@Q}"
 #   SYNC_CMD_PAUSE      SYNC_CMD_DL_INIT    SYNC_CMD_DL         -
 #   SYNC_CMD_PAUSE      SYNC_CMD_DL_INIT    SYNC_CMD_UP_INIT    -
 #   SYNC_CMD_PAUSE      SYNC_CMD_DL_INIT    SYNC_CMD_DL_INIT    -
-#   SYNC_CMD_PAUSE      SYNC_CMD_DL_INIT    SYNC_CMD_PAUSE      -
-#   SYNC_CMD_PAUSE      SYNC_CMD_DL_INIT    SYNC_CMD_UP_EDIT    -
+#   SYNC_CMD_PAUSE      SYNC_CMD_DL_INIT    SYNC_CMD_PAUSE      SYNC_CMD_PAUSE
+#   SYNC_CMD_PAUSE      SYNC_CMD_DL_INIT    SYNC_CMD_UP_EDIT    SYNC_CMD_UP_EDIT, SYNC_CMD_PAUSE
 #   SYNC_CMD_PAUSE      SYNC_CMD_DL_INIT    SYNC_CMD_UNPAUSE    -
 #
 #   SYNC_CMD_PAUSE      SYNC_CMD_PAUSE      SYNC_CMD_REGULAR    -
@@ -2038,8 +2038,26 @@ case "${CLOUD_STAT}" in
                 esac
                 ;;
             *)
-                # 5 -- Ошибка синхронизации или состояния
-                exit_with_msg "Недопустимое состояние: \nСтатус сервера: [${CLOUD_STAT}] -- Команда сервера: [${CMD_CLOUD}].\nОбратитесь к разработчикам." 5
+                case "${CMD_USER}" in
+                    # CMD_USER
+                    "${SYNC_CMD_PAUSE}")
+                        do_sync_pause
+                        ;;
+                    # CMD_USER
+                    "${SYNC_CMD_UP_EDIT}")
+                        do_sync_up_edit
+                        do_sync_pause
+                        ;;
+                    # CMD_USER
+                    "${SYNC_CMD_UNPAUSE}")
+                        do_sync_unpause
+                        ;;
+                    # CMD_USER
+                    *)
+                    # 5 -- Ошибка синхронизации или состояния
+                    exit_with_msg "Недопустимое состояние: \nСтатус сервера: [${CLOUD_STAT}] -- Команда сервера: [${CMD_CLOUD}].\nОбратитесь к разработчикам." 5
+                    ;;
+                esac
                 ;;
         esac
         ;;

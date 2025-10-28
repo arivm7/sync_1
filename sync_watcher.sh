@@ -545,7 +545,8 @@ inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS
     cloud_stat="$("${APP_S1}" "${parent_sync_dir}" "${SHOW_CLOUD_STAT}")" || { exit_with_msg "Ошибка получения статуса сервера для папки '${path}'" 1; }
     cloud_cmd="$("${APP_S1}" "${parent_sync_dir}" "${SHOW_CLOUD_CMD}")" || { exit_with_msg "Ошибка получения команды сервера для папки '${path}'" 1; }
     # echo -e "CMD_CLOUD: ${cloud_cmd}"
-    case "${cloud_cmd}" in
+
+    case "${cloud_stat}" in
         "${SYNC_CMD_REGULAR}")
             cmd=("${APP_S1}" "${parent_sync_dir}" "${SYNC_CMD_UP_INIT}")
             ;;
@@ -556,6 +557,7 @@ inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS
             cmd=()
             ;;
     esac
+
 
     if ((${#cmd[@]})); then
         # П оказать какая команда выполнится
