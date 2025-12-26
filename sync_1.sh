@@ -1645,8 +1645,7 @@ parse_args() {
                 exit 0
                 ;;
             -v|--verbose)
-                print_version
-                exit 0
+                VERB_MODE=$(true);
                 ;;
                           
 
