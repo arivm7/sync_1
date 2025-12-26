@@ -15,7 +15,8 @@
 
 
 # Версия скрипта
-# VERSION="1.6.0 (2025-10-09)"
+# VERSION="1.6.1 (2025-12-26)"
+# v1.6.1 (2025-12-26): Добавлен параметр --presync для sync_watcher.sh
 # v1.6.0 (2025-10-09): Добавлена команда SHOW_CLOUD_STAT, которая показывает статус сервера
 # v1.5.0 (2025-07-10): Поддержка sync_watcher.sh. Переделана поддержка s1
 # v1.4.0 (2025-06-12): Добавлена команда TEST, которая проверяет и показывает состояние синхронизатора
@@ -25,16 +26,15 @@
 
 # Алиасы
 alias s1='sync_1.sh'
-
 alias s1_REGULAR='s1 REGULAR'
-alias s1_UP_INIT='s1 UP_INIT'
-alias s1_UP_EDIT='s1 UP_EDIT'
-alias s1_ALL='sync_all.sh'
-
 alias s1_regular='s1 REGULAR'
+alias s1_UP_INIT='s1 UP_INIT'
 alias s1_up_init='s1 UP_INIT'
+alias s1_UP_EDIT='s1 UP_EDIT'
 alias s1_up_edit='s1 UP_EDIT'
 alias s1_all='sync_all.sh'
+alias s1_w='sync_watcher.sh'
+
 
 # Авдополнение в командной строке
 _sync1_completions() {
@@ -59,6 +59,6 @@ _sync1_completions() {
 # Привязка функции к скрипту
 complete -F _sync1_completions sync_1.sh s1
 complete -W "REGULAR UP DL DL_INIT UP_INIT PAUSE UP_EDIT UNPAUSE SHOW_DEST SHOW_CLOUD_STAT SHOW_CLOUD_CMD TEST LOG \
-                          --edit-conf -ec --edit-list -el --usage -u --help -h --version -V --verbose -v" sync_all.sh s1_all
-complete -W "--dry-run -n --edit-conf -ec --edit-list -el --usage -u --help -h --version -V --verbose -v" sync_backuper.sh
-complete -W "--dry-run -n --edit-conf -ec --edit-list -el --usage -u --help -h --version -V --verbose -v" sync_watcher.sh
+                          --edit-conf -ec --edit-list -el --usage -u --help -h --version -V --verbose -v"               sync_all.sh         s1_all
+complete -W "--dry-run -n --edit-conf -ec --edit-list -el --usage -u --help -h --version -V --verbose -v"               sync_backuper.sh
+complete -W "--dry-run -n --edit-conf -ec --edit-list -el --usage -u --help -h --version -V --verbose -v --presync=0"   sync_watcher.sh     s1_w
