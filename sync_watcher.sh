@@ -16,9 +16,10 @@ trap 'logger -p error -t "SYNC_WATHER" "[$(date)] Ошибка в строке $
 
 
 
-VERSION="0.4.0-alfa (2025-12-26)"
+VERSION="0.4.1-alfa (2026-21-03)"
 COPYRIGHT="Copyright (C) 2004-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK"
 LAST_CHANGES="\
+v0.4.1 (2026-21-03): Добавлен счётчик перед синхронизацией.
 v0.4.0 (2025-12-26): Добавлена предварительная синхронизация и возможность включени/отключения предварительной синхронизации через конфиг или чреез параметр
 v0.3.0 (2025-10-27): Исправлена передача команды в синхронизатор: передаётся не папка, где произошло событие, а корневая папка для синхронизации. Это устранило ошибку прекращения работы скрипта при удалении локальной папки, что ранее вызывало ошибку в синхронизаторе 'Папка не найдена'.
 v0.2.2 (2025-08-25): Добавлено полное описание работы скрипта
@@ -104,6 +105,7 @@ IGNORE_PATTERNS=(
     '\.zim-new~$'       # Временный файл zim
     '(^|/)\.sync/'      # любые файлы в папке .sync (в любом месте пути)
     '\.~lock\.'         # Файлы блокировок офисных пакетов
+    '^.*\.kate-swp'
     '\.git/index\.lock' # Файл git блокировки
     '\.git/'            # Папка git
 )
@@ -118,6 +120,8 @@ COLOR_INFO="\033[0;34m"         # Терминальный цвет для вы�
 COLOR_OK="\033[0;32m"           # Терминальный цвет для вывода Ok-сообщения (зелёный)
 COLOR_ERROR="\033[0;31m"        # Терминальный цвет для вывода ошибок (красный)
 COLOR_WARNING="\033[0;33m"      # Для вывода предупреждений (жёлтый)
+COLOR_NUMERATOR="\033[1;33m"    # Для вывода нумератора ожидания перед выполеннием синхронизации (жёлтый)
+# shellcheck disable=SC2034
 COLOR_RED="\033[0;31m"          # Для вывода красного текста (красный)
 COLOR_OFF="\033[0m"             # Сброс цвета
 
@@ -576,8 +580,8 @@ echo -e "${COLOR_INFO}===> Ctrl+C для выхода${COLOR_OFF}"
 ##
 ##  ========================================  Главный цикл  ========================================
 ##
-inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS[@]}" | while IFS='|' read -r path action file; do
-    
+inotifywait -r -m -e modify,create,delete,move,moved_to,close_write,attrib --format '%w|%e|%f' "${WATCH_DIRS[@]}" | while IFS='|' read -r path action file; do
+
     # ⛔️ Игнорируем внутренние/временные/служебные файлы
     for pattern in "${IGNORE_PATTERNS[@]}"; do
         if [[ "${path}${file}" =~ $pattern ]]; then
@@ -586,18 +590,24 @@ inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS
         fi
     done
 
+    [[ ${VERBOSE} -eq 1 ]] && echo -e "\n${COLOR_INFO}[VERBOSE]${COLOR_OFF} Событие: ${action} | Путь: ${path} | Файл: ${file}"
+
     echo -e "\n🟡 Обнаружено изменение"
     echo -e "${COLOR_USAGE}$(date +'%F %T')${COLOR_OFF} | ${COLOR_INFO}${action}${COLOR_OFF} → ${COLOR_FILENAME}${path}${file}${COLOR_OFF}"
 
     # Абсолютный путь к папке, где произошло событие
     local_event_dir=$(get_abs_path "$path")
 
-        # Найти родительскую папку из WATCH_DIRS, которая содержит событие
+    [[ ${VERBOSE} -eq 1 ]] && echo -e "${COLOR_INFO}[VERBOSE]${COLOR_OFF} local_event_dir: ${COLOR_FILENAME}${local_event_dir}${COLOR_OFF}"
+
+    # Найти родительскую папку из WATCH_DIRS, которая содержит событие
     parent_sync_dir=""
     for watch_dir in "${WATCH_DIRS[@]}"; do
         abs_watch_dir=$(get_abs_path "${watch_dir}")
+        [[ ${VERBOSE} -eq 1 ]] && echo -e "${COLOR_INFO}[VERBOSE]${COLOR_OFF} Проверка: ${COLOR_FILENAME}${abs_watch_dir}${COLOR_OFF}"
         if [[ "${local_event_dir}" == "${abs_watch_dir}"* ]]; then
             parent_sync_dir="$abs_watch_dir"
+            [[ ${VERBOSE} -eq 1 ]] && echo -e "${COLOR_INFO}[VERBOSE]${COLOR_OFF} ✓ Найдено совпадение: ${COLOR_FILENAME}${parent_sync_dir}${COLOR_OFF}"
             break
         fi
     done
@@ -610,7 +620,8 @@ inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS
 
     cloud_stat="$("${APP_S1}" "${parent_sync_dir}" "${SHOW_CLOUD_STAT}")" || { exit_with_msg "Ошибка получения статуса сервера для папки '${path}'" 1; }
     cloud_cmd="$("${APP_S1}" "${parent_sync_dir}" "${SHOW_CLOUD_CMD}")" || { exit_with_msg "Ошибка получения команды сервера для папки '${path}'" 1; }
-    # echo -e "CMD_CLOUD: ${cloud_cmd}"
+    
+    [[ ${VERBOSE} -eq 1 ]] && echo -e "${COLOR_INFO}[VERBOSE]${COLOR_OFF} cloud_stat: ${COLOR_STATUS}${cloud_stat}${COLOR_OFF} | cloud_cmd: ${COLOR_STATUS}${cloud_cmd}${COLOR_OFF}"
 
     case "${cloud_stat}" in
         "${SYNC_CMD_REGULAR}")
@@ -630,7 +641,24 @@ inotifywait -r -m -e modify,create,delete,move --format '%w|%e|%f' "${WATCH_DIRS
         echo -e "RUN: ${COLOR_INFO}${cmd[*]}${COLOR_OFF}"
         # Подождать перед тем, как грузить файлы
         echo -e "Через ${COLOR_INFO}${WAIT_CHANGES} сек${COLOR_OFF} будет выполнена синхронизация..."
-        sleep "${WAIT_CHANGES}"
+
+        # sleep "${WAIT_CHANGES}"
+
+        seconds=${WAIT_CHANGES}
+        first=true
+        while (( seconds >= 0 )); do
+            if $first; then
+                first=false
+            else
+                printf "\033[F\033[F\033[F"
+            fi
+            echo    "╔═══════════════════════════════════════════════════════════════════════════════╗"
+            printf  "║                      Запуск синхронизации через [${COLOR_NUMERATOR}%2d${COLOR_OFF}] сек.                     ║\n" "${seconds}"
+            echo    "╚═══════════════════════════════════════════════════════════════════════════════╝"
+            sleep 1
+            ((seconds--)) || true  ## или так: seconds=$((seconds - 1))   # Всегда возвращает 0
+
+        done
 
         {   # СИНХРОНИЗИРУЕМ
             trap '' SIGINT  # Выключить ловлю Ctrl+C

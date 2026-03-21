@@ -213,6 +213,7 @@ VALID_CLOUD_COMMANDS=(
 #
 # Список команд, требующих наличия папки .sync
 #
+# shellcheck disable=SC2034
 COMMANDS_REQUIRING_SYNC=(
     "${SYNC_CMD_REGULAR}"
     "${SYNC_CMD_UP}"
