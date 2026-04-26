@@ -16,14 +16,18 @@ set -euo pipefail
 
 
 APP_TITLE="Инсталятор персонального синхронизатора sync_1"
-VERSION="1.4.0 (2025-07-10)"
+VERSION="1.4.1 (2026-04-27)"
 COPYRIGHT="Copyright (C) 2006-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK"
 APP_NAME=$(basename "$0")
 LAST_CHANGES="\
+v1.4.1 (2026-04-27): Исправлена ошибка в указании пути назначения при копировании файлов
 v1.4.0 (2025-07-10): Поддержка установки sync_watcher
 v1.3.1 (2025-05-25): Переделывание установки зависимостей
 v1.3.0 (2025-04-29): Добавление установки зависимостей.
 "
+APP_PATH=$(cd "$(dirname "$0")" && pwd)
+
+cd "${APP_PATH}"
 
 
 
@@ -373,7 +377,7 @@ install_config_all()
             echo -e "==== Устанавливаем ${element} -> ${COPY_TO}"
             #  $1 -- путь назначения
             #  $2 -- имя конфиг-файла
-            install_config_file "${list_to}" "${element}"
+            install_config_file "${COPY_TO}" "${element}"
         else
             echo -e "[${COLOR_ERROR}Ошибка{COLOR_OFF}] ${element} -- НЕ ФАЙЛ или НЕВЕРНОЕ УКАЗАНИЕ$"
             echo -e "Аварийное прекращение работы."
@@ -424,4 +428,3 @@ fi
 
 echo -e ""
 echo -e "${COLOR_OK}Установка завершена успешно.\nok.${COLOR_OFF}"
-

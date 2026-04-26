@@ -16,9 +16,10 @@
 
 
 
-VERSION="1.8.0 (2025-10-01)"
+VERSION="1.8.1 (2026-04-27)"
 COPYRIGHT="Copyright (C) 2004-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK"
 LAST_CHANGES="\
+v1.8.1 (2026-04-27): Повторные вызовы dl() и dl_init() при таймингах с помощью run_rsync_with_retry()
 v1.8.0 (2025-10-01): Добавлен механизм статуса сервера (установка, чтение, ветвление работы)
 v1.7.0 (2025-07-10): Добавлена команда SHOW_CLOUD_CMD, которая проверяет и показывает команду сервера
 v1.6.0 (2025-06-27): Добавлен конфиг и команда редактирования конфига --edit-conf|-e
@@ -884,6 +885,38 @@ init_transfer_commands() {
 }
 
 
+#
+# Обёртка для rsync с повторными попытками при сетевых ошибках ssh/rsync.
+# Повторяем только код 255, чтобы не маскировать постоянные логические ошибки.
+#
+run_rsync_with_retry()
+{
+    local attempt
+    local rc
+    local max_attempts=3
+    local sleep_seconds=2
+
+    for ((attempt=1; attempt<=max_attempts; attempt++)); do
+        "$@"
+        rc=$?
+
+        if [ "$rc" -eq 0 ]; then
+            return 0
+        fi
+
+        if [ "$rc" -ne 255 ]; then
+            return "$rc"
+        fi
+
+        if (( attempt < max_attempts )); then
+            echo -e "[${COLOR_WARNING}W${COLOR_OFF}] Ошибка сетевого обмена rsync/ssh (код ${rc}). Повтор ${attempt}/${max_attempts} через ${sleep_seconds} сек."
+            sleep "${sleep_seconds}"
+        fi
+    done
+
+    return "$rc"
+}
+
 
 #
 # Использование:
@@ -905,11 +938,9 @@ dl()
 
     log_info "ACT DL START: [${LOCAL}] -> [${DEST}]"
     if [ "${TYPE_TRANSFER}" = "${SYNC_TYPE_SERVICE}" ]; then
-        # echo "Сервисное копирование"
-        "${CMD_TRANSFER_SERV[@]}" "${LOCAL}" "${DEST}"
+        run_rsync_with_retry "${CMD_TRANSFER_SERV[@]}" "${LOCAL}" "${DEST}"
     else
-        # echo "Копирование данных"
-        "${CMD_TRANSFER_DATA[@]}" "${LOCAL}" "${DEST}"
+        run_rsync_with_retry "${CMD_TRANSFER_DATA[@]}" "${LOCAL}" "${DEST}"
     fi
     log_info "ACT DL END: [$LOCAL] -> [$DEST]"
 }
@@ -932,7 +963,7 @@ dl_init()
 
     log_info "ACT DL_INIT START: [$LOCAL] -> [$DEST]"
 
-    "${CMD_TRANSFER_DATA[@]}" --delete "${LOCAL}" "${DEST}"
+    run_rsync_with_retry "${CMD_TRANSFER_DATA[@]}" --delete "${LOCAL}" "${DEST}"
 
     log_info "ACT DL_INIT END: [$LOCAL] -> [$DEST]"
 }
@@ -1069,11 +1100,7 @@ set_status_all()
     for F in "${DIR_LOCAL}/${DIR_TEMP}/${USER_PREFIX}"*; do
         if [ ! -f "$F" ]; then
             # не файл
-            exit_with_msg   "Файл $F имеет неизвестный тип, не обрабатывается.\n" \
-                            "Этого не долно быть, поскольку все файлы в папку '${DIR_LOCAL}/${DIR_TEMP}/'\n" \
-                            "копировались с сервера по шаблону '${DIR_CLOUD}/${DIR_SYNC}/${USER_PREFIX}*'.\n\n" \
-                            "Нужно проверить папку на сервере и локальную папку на предмет директорий, ссылок и прав доступа.\n\n" \
-                            "Поскольку такого не должно быть, то считаем ошибку критической.\n" \
+            exit_with_msg   "Файл $F имеет неизвестный тип, не обрабатывается.\n Этого не долно быть, поскольку все файлы в папку '${DIR_LOCAL}/${DIR_TEMP}/'\n копировались с сервера по шаблону '${DIR_CLOUD}/${DIR_SYNC}/${USER_PREFIX}*'.\n\n Нужно проверить папку на сервере и локальную папку на предмет директорий, ссылок и прав доступа.\n\n Поскольку такого не должно быть, то считаем ошибку критической.\n" \
                             1;
         fi
         filename="${F##*/}"
