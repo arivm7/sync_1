@@ -655,7 +655,31 @@ inotifywait -r -m -e modify,create,delete,move,moved_to,close_write,attrib --for
             echo    "╔═══════════════════════════════════════════════════════════════════════════════╗"
             printf  "║                      Запуск синхронизации через [${COLOR_NUMERATOR}%2d${COLOR_OFF}] сек.                     ║\n" "${seconds}"
             echo    "╚═══════════════════════════════════════════════════════════════════════════════╝"
+
+            #
+            # ждём 1 секунду или клавишу
+            #
             sleep 1
+            key=""
+            if read -rsn1 -t 1 key; then
+                :
+            else
+                key=""
+            fi
+
+            [[ -z "$key" ]] || {
+                case "$key" in
+                    " ")
+                        echo "SKIP"
+                        break
+                        ;;
+                    $'\e')
+                        echo "EXIT"
+                        exit 0
+                        ;;
+                esac
+            }
+
             ((seconds--)) || true  ## или так: seconds=$((seconds - 1))   # Всегда возвращает 0
 
         done

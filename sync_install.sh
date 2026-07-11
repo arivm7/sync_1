@@ -16,10 +16,11 @@ set -euo pipefail
 
 
 APP_TITLE="Инсталятор персонального синхронизатора sync_1"
-VERSION="1.4.1 (2026-04-27)"
+VERSION="1.5.0 (2026-07-11)"
 COPYRIGHT="Copyright (C) 2006-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK"
 APP_NAME=$(basename "$0")
 LAST_CHANGES="\
+v1.5.0 (2026-07-11): .desktop-файлы теперь генерируются через desktop-generator-installer.sh (вместо копирования шаблона + sed); шаблоны desktop/*.desktop остались только источником текстовых значений (Name/Comment/Categories/MimeType)
 v1.4.1 (2026-04-27): Исправлена ошибка в указании пути назначения при копировании файлов
 v1.4.0 (2025-07-10): Поддержка установки sync_watcher
 v1.3.1 (2025-05-25): Переделывание установки зависимостей
@@ -82,6 +83,8 @@ declare -A DEPENDENCIES_OPTIONAL=(
     ["readlink"]="coreutils"
     ["inotifywait"]="inotify-tools"
     ["envsubst"]="gettext"
+    ["xdg-user-dir"]="xdg-user-dirs"
+    ["tr"]="coreutils"
 )
 
 
@@ -106,6 +109,7 @@ scripts_to="${HOME}/bin"
 icon_files=(
     img/sync_1.icon.svg
     img/sync_1_up.icon.svg
+    img/sync_watcher_icon.svg
 )
 
 # папка назначения для копирования скриптов
@@ -133,14 +137,15 @@ list_to="${SYNC_CONFIG_PATH}"
 
 
 
-# Список имен файлов .desktop для копирования
-# shellcheck disable=SC2034
+# Список шаблонов .desktop, из которых берутся текстовые значения
+# (Name, Comment, Categories, MimeType) для генерации через
+# desktop-generator-installer.sh. Сами шаблоны никуда не копируются.
 desktop_files=(
 desktop/sync_regular.desktop
 desktop/sync_up.desktop
 )
 
-# папка назначения для копирования скриптов
+# папка назначения .desktop-файлов (совпадает с --target menu в desktop-generator-installer.sh)
 desktop_to="${HOME}/.local/share/applications"
 
 
@@ -165,7 +170,8 @@ print_help()
     echo -e "      (sync_1.sh, sync_all.sh, sync_1_aliases.sh, sync_backuper.sh)"
     echo -e "    - Конфиг-файлы и лист-файлы копируются в папаку ~/.config/sync"
     echo -e "    - Иконки копируются в папаку ~/.local/share/icons/sync"
-    echo -e "    - .desktop-файлы копируются в папку ~/.local/share/applications"
+    echo -e "    - .desktop-файлы создаются в папке ~/.local/share/applications"
+    echo -e "      (через desktop-generator-installer.sh, на основе шаблонов desktop/*.desktop)"
     echo -e "    - Скрипт с алиасами и автодополнением добавляется в ~/.bashrc"
     echo -e ""
     echo -e "Подробности о работе скриптов смотрите в справках соответствующих скриптов." 
@@ -222,7 +228,7 @@ check_dependency_group() {
                 read -r answer
                 answer="${answer,,}"  # в нижний регистр
                 if [[ "$answer" =~ ^(y|yes|)$ ]]; then
-                    sudo apt update && sudo apt install -y "$pkg"
+                    sudo apt update && sudo apt install -y "$pkg" || true
                     if is_installed "$cmd"; then
                         echo "[OK] '$cmd' успешно установлен."
                     else
@@ -307,7 +313,7 @@ check_dependency_group DEPENDENCIES_OPTIONAL 0
 copy_file_to()
 {
     local -n local_array=$1
-    COPY_TO=$2
+    local COPY_TO=$2
     mkdir -p "${COPY_TO}" || { echo -e "${COLOR_ERROR}ОШИБКА${COLOR_OFF}: По какой-то причине не удаётся создать папаку '${COPY_TO}'."; exit 1; }
     for element in "${local_array[@]}"; do
         if [ -f "${element}" ]; then
@@ -326,7 +332,6 @@ copy_file_to()
 
 copy_file_to scripts_files "${scripts_to}"
 copy_file_to icon_files    "${icon_to}"
-copy_file_to desktop_files "${desktop_to}"
 
 
 
@@ -370,7 +375,7 @@ install_config_file() {
 install_config_all()
 {
     local -n local_array=$1
-    COPY_TO=$2
+    local COPY_TO=$2
     mkdir -p "${COPY_TO}" || { echo -e "${COLOR_ERROR}ОШИБКА${COLOR_OFF}: Ошибка созданя папки для конфигов '${COPY_TO}'."; exit 1; }
     for element in "${local_array[@]}"; do
         if [ -f "${element}" ]; then
@@ -379,7 +384,7 @@ install_config_all()
             #  $2 -- имя конфиг-файла
             install_config_file "${COPY_TO}" "${element}"
         else
-            echo -e "[${COLOR_ERROR}Ошибка{COLOR_OFF}] ${element} -- НЕ ФАЙЛ или НЕВЕРНОЕ УКАЗАНИЕ$"
+            echo -e "[${COLOR_ERROR}Ошибка${COLOR_OFF}] ${element} -- НЕ ФАЙЛ или НЕВЕРНОЕ УКАЗАНИЕ"
             echo -e "Аварийное прекращение работы."
             exit 1;
         fi
@@ -393,17 +398,101 @@ install_config_all list_files "${list_to}"
 
 
 
+#
+# Извлекает значение поля из .desktop-файла-шаблона (форма Key=значение)
+# $1 -- путь к файлу-шаблону
+# $2 -- имя поля (Name, Comment, Categories, MimeType, ...)
+#
+get_desktop_field() {
+    local file="${1:?}"
+    local field="${2:?}"
+    grep -m1 "^${field}=" "${file}" 2>/dev/null | cut -d'=' -f2-
+}
+
+#
+# Генерирует один .desktop-файл через desktop-generator-installer.sh.
+# Текстовые значения (Name, Comment, Categories, MimeType) берутся из
+# файла-шаблона, путь запуска и путь к иконке передаются явно.
+# $1 -- путь к файлу-шаблону (источник Name/Comment/Categories/MimeType)
+# $2 -- команда для Exec= (полный путь к исполняемому скрипту)
+# $3 -- полный путь к иконке
+#
+generate_desktop_entry() {
+    local template="${1:?}"
+    local exec_cmd="${2:?}"
+    local icon_path="${3:?}"
+
+    if [ ! -f "${template}" ]; then
+        echo -e "${COLOR_ERROR}${template} -- НЕ ФАЙЛ или НЕВЕРНОЕ УКАЗАНИЕ${COLOR_OFF}"
+        echo -e "Аварийное прекращение работы."
+        exit 1
+    fi
+
+    if ! is_installed "desktop-generator-installer.sh"; then
+        echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Утилита 'desktop-generator-installer.sh' не найдена."
+        echo -e "${COLOR_INFO}Пропускаем создание .desktop-файла из '${template}' (не критично).${COLOR_OFF}"
+        return 0
+    fi
+
+    local name comment category mimetype
+    name="$(get_desktop_field "${template}" "Name")"
+    comment="$(get_desktop_field "${template}" "Comment")"
+    category="$(get_desktop_field "${template}" "Categories")"
+    mimetype="$(get_desktop_field "${template}" "MimeType")"
+
+    echo -e "==== Генерируем .desktop из шаблона ${template}"
+    if ! desktop-generator-installer.sh \
+        --name       "${name}" \
+        --exec       "${exec_cmd}" \
+        --terminal   true \
+        --category   "${category}" \
+        --target     menu \
+        --comment    "${comment}" \
+        --mimetype   "${mimetype}" \
+        --icon       "${icon_path}" \
+        --overwrite
+    then
+        echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Не удалось создать .desktop-файл из шаблона '${template}' (desktop-generator-installer.sh завершился с ошибкой)."
+        echo -e "${COLOR_INFO}Продолжаем установку без него — это не критично.${COLOR_OFF}"
+    fi
+}
+
 echo ""
-echo "Исправляем пути в .desktop-файлах"
+echo "Создаём .desktop-файлы"
 
-sed -i "s#Exec=sync_all.sh#Exec=${scripts_to}/sync_all.sh#g" "${desktop_to}/sync_regular.desktop"
-sed -i "s#Exec=sync_all.sh#Exec=${scripts_to}/sync_all.sh#g" "${desktop_to}/sync_up.desktop"
-sed -i "s#Path=.#Path=${scripts_to}#g" "${desktop_to}/sync_regular.desktop"
-sed -i "s#Path=.#Path=${scripts_to}#g" "${desktop_to}/sync_up.desktop"
-sed -i "s#Icon=sync_1.icon.svg#Icon=${icon_to}/sync_1.icon.svg#g"       "${desktop_to}/sync_regular.desktop"
-sed -i "s#Icon=sync_1_up.icon.svg#Icon=${icon_to}/sync_1_up.icon.svg#g" "${desktop_to}/sync_up.desktop"
+# Иконка для каждого шаблона из desktop_files (Exec у обоих один и тот же -- sync_all.sh)
+declare -A DESKTOP_ICON_MAP=(
+    ["desktop/sync_regular.desktop"]="sync_1.icon.svg"
+    ["desktop/sync_up.desktop"]="sync_1_up.icon.svg"
+)
 
-echo "Закончили исправлять пути в .desktop-файлах"
+for template in "${desktop_files[@]}"; do
+    generate_desktop_entry "${template}" "${scripts_to}/sync_all.sh" "${icon_to}/${DESKTOP_ICON_MAP[$template]}"
+done
+
+# У sync_watcher нет отдельного .desktop-шаблона в desktop_files —
+# значения заданы прямо здесь.
+if is_installed "desktop-generator-installer.sh"; then
+    if ! desktop-generator-installer.sh \
+        --name     "sync_watcher" \
+        --exec     "${scripts_to}/sync_watcher.sh" \
+        --terminal true \
+        --category "Accessibility;System;Utility;" \
+        --target   menu \
+        --comment  "Скрипт следящий за изменениями и запускающий синхронизатор" \
+        --mimetype "text/x-shellscript;" \
+        --icon     "${icon_to}/sync_watcher_icon.svg" \
+        --overwrite
+    then
+        echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Не удалось создать .desktop-файл для sync_watcher (desktop-generator-installer.sh завершился с ошибкой)."
+        echo -e "${COLOR_INFO}Продолжаем установку без него — это не критично.${COLOR_OFF}"
+    fi
+else
+    echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Утилита 'desktop-generator-installer.sh' не найдена."
+    echo -e "${COLOR_INFO}Пропускаем создание .desktop-файла для sync_watcher (не критично).${COLOR_OFF}"
+fi
+
+echo "Закончили создавать .desktop-файлы"
 echo -e "${COLOR_OK}Ok${COLOR_OFF}.\n"
 
 
