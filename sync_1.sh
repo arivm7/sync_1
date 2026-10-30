@@ -16,13 +16,15 @@
 
 
 
-VERSION="1.8.1 (2026-04-27)"
+VERSION="1.8.2 (2026-10-30)"
 COPYRIGHT="Copyright (C) 2004-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK"
 LAST_CHANGES="\
+v1.8.2 (2026-10-30): Исправлена ошибка CLOUD_UP_INIT.
+                     Исправлена ошибка добавления папки в список массовой синхронизации sync_all.list.
 v1.8.1 (2026-04-27): Повторные вызовы dl() и dl_init() при таймингах с помощью run_rsync_with_retry()
 v1.8.0 (2025-10-01): Добавлен механизм статуса сервера (установка, чтение, ветвление работы)
 v1.7.0 (2025-07-10): Добавлена команда SHOW_CLOUD_CMD, которая проверяет и показывает команду сервера
-v1.6.0 (2025-06-27): Добавлен конфиг и команда редактирования конфига --edit-conf|-e
+v1.6.0 (2025-06-27): Добавлен конфиг и команда редактирования конфига --edit-conf|-ec
 v1.5.0 (2025-06-12): Добавлена команда TEST, которая проверяет и показывает состояние синхронизатора
 v1.4.1 (2025-05-26): Исправление ошибок диспетчеризации команд
 v1.4.0 (2025-05-22): Рефакторинг и массовые проверки.
@@ -89,8 +91,13 @@ LOG_PREFIX="SYNC_1"                         # Используется для п
 SSH_PORT="22"                               # Порт для доступа по протоколу ssh
 LOG_COUNT_ROWS="40"                         # Количество строк по умолчанию при просмотре логов
 
-FILE_SYNC_ALL_LIST="sync_all.list"          # Имя файла для скрипта массовой синхронизации. 
-                                            # В него добавляется строка при создании репозитория.
+
+# Имя файла для скрипта массовой синхронизации sync_all.sh.
+# В него добавляется строка при создании репозитория.
+# Должно совпадать с ${FILE_NAME}.list в sync_all.sh (там FILE_NAME = "sync_all").
+# Файл размещается в CONFIG_PATH (см. ниже), т.е. ~/.config/sync/sync_all.list
+FILE_SYNC_ALL_LIST="sync_all.list"
+                                            
 
 # Начальный список файла excludes для исключений rsync
 # Если файла excludes нет, то он создаётся и заполняется этими данными
@@ -474,7 +481,7 @@ ${COLOR_INFO}Разумеется, классика:${COLOR_OFF}
     ${COLOR_USAGE}--usage${COLOR_OFF}     | ${COLOR_USAGE}-u${COLOR_OFF}    Показать краткое использование
     ${COLOR_USAGE}--help${COLOR_OFF}      | ${COLOR_USAGE}-h${COLOR_OFF}    Показать эту подсказку
     ${COLOR_USAGE}--version${COLOR_OFF}   | ${COLOR_USAGE}-v${COLOR_OFF}    Показать версию
-    ${COLOR_USAGE}--edit-conf${COLOR_OFF} | ${COLOR_USAGE}-e${COLOR_OFF}    Редактирование конфига ${COLOR_FILENAME}${CONFIG_FILE}${COLOR_OFF}
+    ${COLOR_USAGE}--edit-conf${COLOR_OFF} | ${COLOR_USAGE}-ec${COLOR_OFF}   Редактирование конфига ${COLOR_FILENAME}${CONFIG_FILE}${COLOR_OFF}
                         Программа для редактирования может быть указана в конфиге строкой вида: 
                         EDITOR=<Программа>
                         Путь к программе-редактору должен быть без пробелов. 
@@ -543,7 +550,7 @@ ${APP_TITLE}
     ${COLOR_USAGE}--usage${COLOR_OFF}     | ${COLOR_USAGE}-u${COLOR_OFF}    Показать краткое использование
     ${COLOR_USAGE}--help${COLOR_OFF}      | ${COLOR_USAGE}-h${COLOR_OFF}    Показать эту подсказку
     ${COLOR_USAGE}--version${COLOR_OFF}   | ${COLOR_USAGE}-v${COLOR_OFF}    Показать версию
-    ${COLOR_USAGE}--edit-conf${COLOR_OFF} | ${COLOR_USAGE}-e${COLOR_OFF}    Редактирование конфига
+    ${COLOR_USAGE}--edit-conf${COLOR_OFF} | ${COLOR_USAGE}-ec${COLOR_OFF}   Редактирование конфига
 
 ${COPYRIGHT}
 "
@@ -863,8 +870,10 @@ find_sync_dir() {
 # 
 init_transfer_commands() {
     #  Команда для копирования служебных данных
+    #  Флаг -r обязателен: используется в do_cloud_up_init() для рекурсивного
+    #  копирования каталога tmp/<папка> на сервер (v1.8.2)
     CMD_TRANSFER_SERV=(rsync 
-        -c -htprl --inplace -W
+        -c -htprl -r --inplace -W
         --rsh="ssh -p ${SSH_PORT}"
     )
 
@@ -1349,15 +1358,16 @@ do_cloud_up_init()
     dl "${DIR_LOCAL}/${DIR_TEMP}/${CLOUD_FOLDER}" "${CLOUD_PATH}" "${SYNC_TYPE_SERVICE}" || { exit_with_msg  "do_cloud_up_init: Ошибка при выполнении dl '${DIR_LOCAL}/${DIR_TEMP}/${CLOUD_FOLDER}' '${CLOUD_PATH}' '${SYNC_TYPE_SERVICE}'" 1; }
     init_temp
 
-    echo     "Добавляем папку в список массовой синхронизации [${FILE_SYNC_ALL_LIST}]..."
-    if [ -f "${APP_PATH}/${FILE_SYNC_ALL_LIST}" ]; then
-        if [ -w "${APP_PATH}/${FILE_SYNC_ALL_LIST}" ]; then # Есть права на запись
-            if ( grep -q "${DIR_LOCAL}" "${APP_PATH}/${FILE_SYNC_ALL_LIST}" ); 
+    FILE_SYNC_ALL_LIST_FULL_PATH="${CONFIG_PATH}/${FILE_SYNC_ALL_LIST}"
+    echo     "Добавляем папку в список массовой синхронизации [${FILE_SYNC_ALL_LIST_FULL_PATH}]..."
+    if [ -f "${FILE_SYNC_ALL_LIST_FULL_PATH}" ]; then
+        if [ -w "${FILE_SYNC_ALL_LIST_FULL_PATH}" ]; then # Есть права на запись
+            if ( grep -q "${DIR_LOCAL}" "${FILE_SYNC_ALL_LIST_FULL_PATH}" ); 
             then 
-                echo "В файле [${APP_PATH}/${FILE_SYNC_ALL_LIST}] строка [${DIR_LOCAL}] есть."; 
+                echo "В файле [${FILE_SYNC_ALL_LIST_FULL_PATH}] строка [${DIR_LOCAL}] есть."; 
                 echo "Ничего не делаем."; 
             else 
-                echo "В файле [${APP_PATH}/${FILE_SYNC_ALL_LIST}] НЕТ строки [${DIR_LOCAL}]."; 
+                echo "В файле [${FILE_SYNC_ALL_LIST_FULL_PATH}] НЕТ строки [${DIR_LOCAL}]."; 
                 printf "Добавляем..."; 
                 {
                     echo ""
@@ -1367,15 +1377,15 @@ do_cloud_up_init()
                     echo "# командой ${SYNC_CMD_CLOUD_UP_INIT}"
                     echo "#"
                     echo "\"${DIR_LOCAL}\" \"$(basename "${DIR_LOCAL}")\""
-                }  >> "${APP_PATH}/${FILE_SYNC_ALL_LIST}"
+                }  >> "${FILE_SYNC_ALL_LIST_FULL_PATH}" || exit_with_msg "do_cloud_up_init: Ошибка при записи в файл [${FILE_SYNC_ALL_LIST_FULL_PATH}]" 1
                 printf "...Ok.\n"; 
             fi
         else
-            echo "Нет прав на запись в [${APP_PATH}/${FILE_SYNC_ALL_LIST}]"
+            echo "Нет прав на запись в [${FILE_SYNC_ALL_LIST_FULL_PATH}]"
             echo "Проверьте права доступа и добавьте строку в ручную."
         fi
     else
-        echo "Файла [${FILE_SYNC_ALL_LIST}] нет."
+        echo "Файла [${FILE_SYNC_ALL_LIST_FULL_PATH}] нет."
     fi
 
     echo   "${LINE_TOP_}"
@@ -1737,7 +1747,7 @@ parse_args() {
         fi
 
         # Создание репозитория на сервере из указанной локальной папки
-        do_cloud_up_init
+        # вызов do_cloud_up_init будет после инициализации переменных
     fi
 
 
@@ -1813,6 +1823,11 @@ find_sync_dir
 # 
 init_transfer_commands
 
+
+# CLOUD_UP_INIT
+if [[ "${CMD_USER}" == "${SYNC_CMD_CLOUD_UP_INIT}" ]]; then
+    do_cloud_up_init
+fi
 
 
 #

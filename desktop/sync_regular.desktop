@@ -2,7 +2,7 @@
 Comment[ru_RU]=Скрипт индивидуальной синхронизации. Синхронизировать все папаки.
 Comment=Скрипт индивидуальной синхронизации. Синхронизировать все папаки.
 Comment[ru_UA]=Скрипт индивидуальной синхронизации. Синхронизировать все папаки.
-Exec=sync_all.sh
+Exec=sync_all.sh REGULAR
 GenericName[ru_RU]=
 GenericName=
 GenericName[ru_UA]=

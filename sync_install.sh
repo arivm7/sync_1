@@ -16,17 +16,21 @@ set -euo pipefail
 
 
 APP_TITLE="Инсталятор персонального синхронизатора sync_1"
-VERSION="1.5.0 (2026-07-11)"
 COPYRIGHT="Copyright (C) 2006-2025 Ariv <ariv@meta.ua> | https://github.com/arivm7 | RI-Network, Kiev, UK"
-APP_NAME=$(basename "$0")
+VERSION="1.6.0 (2026-10-30)"
 LAST_CHANGES="\
+v1.6.0 (2026-10-30): Переписан механизм генерации .desktop-файлов. Добавлены Fallback-значения для пустых полей (Comment/Categories/MimeType).
 v1.5.0 (2026-07-11): .desktop-файлы теперь генерируются через desktop-generator-installer.sh (вместо копирования шаблона + sed); шаблоны desktop/*.desktop остались только источником текстовых значений (Name/Comment/Categories/MimeType)
 v1.4.1 (2026-04-27): Исправлена ошибка в указании пути назначения при копировании файлов
 v1.4.0 (2025-07-10): Поддержка установки sync_watcher
 v1.3.1 (2025-05-25): Переделывание установки зависимостей
 v1.3.0 (2025-04-29): Добавление установки зависимостей.
 "
+
+APP_NAME=$(basename "$0")
 APP_PATH=$(cd "$(dirname "$0")" && pwd)
+
+
 
 cd "${APP_PATH}"
 
@@ -35,15 +39,34 @@ cd "${APP_PATH}"
 SYNC_CONFIG_DIRNAME="sync"
 SYNC_CONFIG_PATH="${XDG_CONFIG_HOME:-${HOME}/.config}/${SYNC_CONFIG_DIRNAME:+${SYNC_CONFIG_DIRNAME}}"
 
+DESKTOP_GEN="desktop-generator-installer.sh"
+if [ -x "${APP_PATH}/${DESKTOP_GEN}" ]; then
+    DESKTOP_GEN="${APP_PATH}/${DESKTOP_GEN}"
+fi
+
+
+
+# ---------------------------------------------------------------------------
+# Fallback-значения для полей .desktop-шаблонов.
+# Используются, если в шаблоне desktop/*.desktop отсутствует соответствующее
+# поле (Name/Comment/Categories/MimeType). Это защищает от интерактивных
+# вопросов внутри desktop-generator-installer.sh (ask_if_empty), которые
+# задаются при пустом значении поля.
+# ---------------------------------------------------------------------------
+CATEGORY_FALLBACK="Accessibility;System;Utility;"
+MIMETYPE_FALLBACK="text/x-shellscript;"
+COMMENT_FALLBACK="Скрипт индивидуальной синхронизации. Синхронизировать все папки."
+
+
 
 # shellcheck disable=SC2034
 {
     COLOR_USAGE="\e[1;32m"            # Терминальный цвет для вывода переменной статуса
-    COLOR_OK="\e[0;32m"                 # Терминальный цвет для вывода Успешного сообщения
-    COLOR_ERROR="\e[0;31m"              # Терминальный цвет для вывода ошибок
+    COLOR_OK="\e[0;32m"               # Терминальный цвет для вывода Успешного сообщения
+    COLOR_ERROR="\e[0;31m"            # Терминальный цвет для вывода ошибок
     COLOR_INFO="\e[0;34m"             # Терминальный цвет для вывода информации (об ошибке или причине выхода)
     COLOR_FILENAME="\e[1;36m"         # Терминальный цвет для вывода имён файлов
-    COLOR_OFF="\e[0m"                   # Терминальный цвет для сброса цвета
+    COLOR_OFF="\e[0m"                 # Терминальный цвет для сброса цвета
 }
 
 
@@ -85,6 +108,7 @@ declare -A DEPENDENCIES_OPTIONAL=(
     ["envsubst"]="gettext"
     ["xdg-user-dir"]="xdg-user-dirs"
     ["tr"]="coreutils"
+    ["desktop-generator-installer.sh"]="desktop-generator-installer"
 )
 
 
@@ -117,19 +141,12 @@ icon_to="${HOME}/.local/share/icons/sync"
 
 
 
-# # Лист-файл для массовой синхронизации
-# SYNC_ALL_LIST_FILE="sync_all.list"
-# # Лист-файл для бакапера
-# SYNC_BACKUPER_LIST="sync_backuper.list"
-# # Лист-файл для автосихронизатора
-# SYNC_WATCHER_LIST="sync_watcher.list"
-
 # Список лист-файлов для копирования
 # shellcheck disable=SC2034
 list_files=(
-    sync_all.list
-    sync_backuper.list
-    sync_watcher.list
+    sync_all.list       # Лист-файл для массовой синхронизации
+    sync_backuper.list  # Лист-файл для бакапера
+    sync_watcher.list   # Лист-файл для автосихронизатора
 )
 
 # папка назначения для копирования конфигов
@@ -145,7 +162,10 @@ desktop/sync_regular.desktop
 desktop/sync_up.desktop
 )
 
+# deprecated
 # папка назначения .desktop-файлов (совпадает с --target menu в desktop-generator-installer.sh)
+# Сейчас переменная не используется, посольку генератор сам кладёт по --target menu
+# shellcheck disable=SC2034
 desktop_to="${HOME}/.local/share/applications"
 
 
@@ -166,12 +186,13 @@ print_help()
     echo -e "Вспомогательный скрипт из комплекта персональной синхронизации sync_1." 
     echo -e ""
     echo -e "Краткое описание инсталлятора:"
-    echo -e "    - Исполняемые скрипты копирются в папку ~/bin"
+    echo -e "    - Исполняемые скрипты копируются в папку ~/bin"
     echo -e "      (sync_1.sh, sync_all.sh, sync_1_aliases.sh, sync_backuper.sh)"
-    echo -e "    - Конфиг-файлы и лист-файлы копируются в папаку ~/.config/sync"
-    echo -e "    - Иконки копируются в папаку ~/.local/share/icons/sync"
+    echo -e "    - Лист-файлы (*.list) копируются в папку ~/.config/sync"
+    echo -e "      (конфиг-файлы *.conf создаются скриптами при первом запуске)"
+    echo -e "    - Иконки копируются в папку ~/.local/share/icons/sync"
     echo -e "    - .desktop-файлы создаются в папке ~/.local/share/applications"
-    echo -e "      (через desktop-generator-installer.sh, на основе шаблонов desktop/*.desktop)"
+    echo -e "      (через DESKTOP_GEN=desktop-generator-installer.sh, на основе шаблонов desktop/*.desktop)"
     echo -e "    - Скрипт с алиасами и автодополнением добавляется в ~/.bashrc"
     echo -e ""
     echo -e "Подробности о работе скриптов смотрите в справках соответствующих скриптов." 
@@ -184,13 +205,26 @@ print_help()
 
 
 
-# Проверка наличия команды в системе
+# Проверка наличия команды в системе (в PATH или рядом с инсталлятором)
 is_installed() {
-    command -v "$1" &>/dev/null
+    local cmd="$1"
+    if [[ "$cmd" == /* ]]; then
+        [ -x "$cmd" ]
+    else
+        command -v "$cmd" &>/dev/null || [ -x "${APP_PATH}/$cmd" ]
+    fi
 }
+
+
 
 # Проверка доступности пакета в APT
 is_available_in_repo() {
+
+    if ! command -v apt-cache >/dev/null; then
+        echo "[Ошибка] Инсталлятор поддерживает только APT (Debian/Ubuntu)."
+        exit 1
+    fi
+    
     apt-cache show "$1" &>/dev/null
 }
 
@@ -220,7 +254,7 @@ check_dependency_group() {
             if [[ "$is_required" == "1" ]]; then 
                 echo "(пакет обязательный)"
             else 
-                echo "(пакет рекомендуемый, не обязатеьный)"
+                echo "(пакет рекомендуемый, не обязательный)"
             fi
 
             if is_available_in_repo "$pkg"; then
@@ -252,43 +286,6 @@ check_dependency_group() {
 
 
 
-#
-# Проверяет установлена ли программа. 
-# Если нет, то устанавливает пакет, в котором она находится
-# $1 -- Программа
-# $2 -- Пакет, в котором эта программа. Для установки программы.
-#
-install_if_not_()
-{
-    APP="$1"
-    PKG="$2"
-    CMD_INST="sudo apt install ${PKG}"
-
-    eval "set -- $(whereis "${APP}")"
-    if [ "$#" -lt 2 ]; then
-        # shellcheck disable=SC2059
-        printf "[${APP}] из пакета [${PKG}] не установлена. Установить? (1/0) "
-        read -r -n 1 YES
-        echo ""
-        if  [ "#${YES}#" == "#1#" ]; then
-            echo "--Устанавливаем---------------------------------"
-            ${CMD_INST}
-            exit_code=$?
-            echo "------------------------------------------------"
-            if [ $exit_code -eq 0 ]; then
-                echo "${PKG} Установлена успешно."
-            else
-                echo "Установка [${PKG}] не удалась."
-            fi
-            echo "------------------------------------------------"
-        fi
-    else
-        echo "Программа [${APP}] из пакета [${PKG}] есть."
-    fi
-}
-
-
-
 if  [ "$#" -ge 1 ] && \
     { 
         [ "$1" = "--help" ] || [ "$1" = "-h" ] || \
@@ -314,18 +311,19 @@ copy_file_to()
 {
     local -n local_array=$1
     local COPY_TO=$2
-    mkdir -p "${COPY_TO}" || { echo -e "${COLOR_ERROR}ОШИБКА${COLOR_OFF}: По какой-то причине не удаётся создать папаку '${COPY_TO}'."; exit 1; }
+    mkdir -p "${COPY_TO}" || { echo -e "${COLOR_ERROR}ОШИБКА${COLOR_OFF}: По какой-то причине не удаётся создать папку '${COPY_TO}'."; exit 1; }
     for element in "${local_array[@]}"; do
         if [ -f "${element}" ]; then
             printf "==== Копируем файл %s -> %s\n" "${element}" "${COPY_TO}"
-            cp --force "${element}" "${COPY_TO}"
+            cp --force -a "${element}" "${COPY_TO}"
         else
             echo -e "${COLOR_ERROR}${element} -- НЕ ФАЙЛ или НЕВЕРНОЕ УКАЗАНИЕ${COLOR_OFF}"
             echo -e "Аварийное прекращение работы."
             exit 1;
         fi
     done
-    echo -e "==== ${COLOR_OK}Копирование завершено${COLOR_OFF}\n"
+    echo -e "==== ${COLOR_OK}Копирование завершено${COLOR_OFF}"
+    echo ""
 }
 
 
@@ -356,7 +354,7 @@ install_config_file() {
             echo "Оставляем существующий конфиг-файл [${config_file}]."
         else
             printf "==== Копируем файл %s -> %s\n" "${config_file}" "${target_dir}/${config_file}"
-            cp --force "${config_file}" "${target_dir}/${config_file}"
+            cp --force -a "${config_file}" "${target_dir}/${config_file}"
             echo "Дефолтный конфиг-файл [${config_file}] установлен."
         fi
     else
@@ -376,7 +374,7 @@ install_config_all()
 {
     local -n local_array=$1
     local COPY_TO=$2
-    mkdir -p "${COPY_TO}" || { echo -e "${COLOR_ERROR}ОШИБКА${COLOR_OFF}: Ошибка созданя папки для конфигов '${COPY_TO}'."; exit 1; }
+    mkdir -p "${COPY_TO}" || { echo -e "${COLOR_ERROR}ОШИБКА${COLOR_OFF}: Ошибка создания папки для конфигов '${COPY_TO}'."; exit 1; }
     for element in "${local_array[@]}"; do
         if [ -f "${element}" ]; then
             echo -e "==== Устанавливаем ${element} -> ${COPY_TO}"
@@ -406,90 +404,164 @@ install_config_all list_files "${list_to}"
 get_desktop_field() {
     local file="${1:?}"
     local field="${2:?}"
-    grep -m1 "^${field}=" "${file}" 2>/dev/null | cut -d'=' -f2-
+    local value
+    value=$(grep -m1 "^${field}=" "${file}" 2>/dev/null | cut -d'=' -f2- || true)
+    printf '%s' "${value}"
 }
+
+
 
 #
 # Генерирует один .desktop-файл через desktop-generator-installer.sh.
 # Текстовые значения (Name, Comment, Categories, MimeType) берутся из
-# файла-шаблона, путь запуска и путь к иконке передаются явно.
+# файла-шаблона. Если поле в шаблоне отсутствует — подставляется fallback,
+# чтобы desktop-generator-installer.sh НЕ задавал интерактивных вопросов
+# (его ask_if_empty срабатывает на пустое значение).
+#
 # $1 -- путь к файлу-шаблону (источник Name/Comment/Categories/MimeType)
-# $2 -- команда для Exec= (полный путь к исполняемому скрипту)
-# $3 -- полный путь к иконке
+# $2 -- полный путь к иконке
 #
 generate_desktop_entry() {
     local template="${1:?}"
-    local exec_cmd="${2:?}"
-    local icon_path="${3:?}"
+    local icon_path="${2:?}"
 
+    # ---- Проверка шаблона ---------------------------------------------------
     if [ ! -f "${template}" ]; then
         echo -e "${COLOR_ERROR}${template} -- НЕ ФАЙЛ или НЕВЕРНОЕ УКАЗАНИЕ${COLOR_OFF}"
         echo -e "Аварийное прекращение работы."
         exit 1
     fi
 
-    if ! is_installed "desktop-generator-installer.sh"; then
-        echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Утилита 'desktop-generator-installer.sh' не найдена."
-        echo -e "${COLOR_INFO}Пропускаем создание .desktop-файла из '${template}' (не критично).${COLOR_OFF}"
-        return 0
-    fi
-
-    local name comment category mimetype
+    # ---- Чтение полей из шаблона -------------------------------------------
+    local name exec_field comment category mimetype
     name="$(get_desktop_field "${template}" "Name")"
+    exec_field="$(get_desktop_field "${template}" "Exec")"
     comment="$(get_desktop_field "${template}" "Comment")"
     category="$(get_desktop_field "${template}" "Categories")"
     mimetype="$(get_desktop_field "${template}" "MimeType")"
 
-    echo -e "==== Генерируем .desktop из шаблона ${template}"
-    if ! desktop-generator-installer.sh \
-        --name       "${name}" \
-        --exec       "${exec_cmd}" \
-        --terminal   true \
-        --category   "${category}" \
-        --target     menu \
-        --comment    "${comment}" \
-        --mimetype   "${mimetype}" \
-        --icon       "${icon_path}" \
+    # ---- Валидация обязательных полей --------------------------------------
+    if [[ -z "${name}" ]]; then
+        echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] В шаблоне '${template}' нет поля ${COLOR_USAGE}Name${COLOR_OFF}."
+        echo -e "Требуется исправление шаблона."
+        echo -e "Аварийное прекращение работы."
+        exit 1
+    fi
+
+    if [[ -z "${exec_field}" ]]; then
+        echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] В шаблоне '${template}' нет поля ${COLOR_USAGE}Exec${COLOR_OFF}."
+        echo -e "Требуется исправление шаблона."
+        echo -e "Аварийное прекращение работы."
+        exit 1
+    fi
+
+    # В шаблоне ожидается только имя исполняемого файла (возможно, с аргументами).
+    # Полный путь подставляется здесь.
+    local exec_cmd
+    if [[ "${exec_field}" == /* ]]; then
+        # Шаблон уже содержит полный путь — не дублируем ${scripts_to}
+        exec_cmd="${exec_field}"
+    else
+        exec_cmd="${scripts_to}/${exec_field}"
+    fi
+
+    # ---- Fallback для необязательных полей ---------------------------------
+    # Пустое значение поля приведёт к интерактивному вопросу в генераторе.
+    # Подставляем fallback, чтобы установка оставалась неинтерактивной.
+    if [[ -z "${comment}"  ]]; then
+        comment="${COMMENT_FALLBACK}"
+        echo -e "${COLOR_INFO}[i]${COLOR_OFF} В шаблоне '${template}' нет Comment — использую fallback."
+    fi
+    if [[ -z "${category}" ]]; then
+        category="${CATEGORY_FALLBACK}"
+        echo -e "${COLOR_INFO}[i]${COLOR_OFF} В шаблоне '${template}' нет Categories — использую fallback."
+    fi
+    if [[ -z "${mimetype}" ]]; then
+        mimetype="${MIMETYPE_FALLBACK}"
+        echo -e "${COLOR_INFO}[i]${COLOR_OFF} В шаблоне '${template}' нет MimeType — использую fallback."
+    fi
+
+    # ---- Предупреждение об отсутствии иконки -------------------------------
+    if [[ ! -f "${icon_path}" ]]; then
+        echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Файл иконки не найден: ${icon_path}"
+        echo -e "Требуется исправление массива иконок ${COLOR_USAGE}DESKTOP_ICON_MAP${COLOR_OFF}."
+        echo -e "Аварийное прекращение работы."
+        exit 1
+    fi
+
+    # ---- Сборка аргументов и вызов генератора ------------------------------
+    # Все поля передаются непустыми. --category и --mimetype передаются всегда,
+    # --icon -- только если иконка существует.
+    local -a args=(
+        --name       "${name}"
+        --exec       "${exec_cmd}"
+        --icon       "${icon_path}"
+        --terminal   true
+        --category   "${category}"
+        --mimetype   "${mimetype}"
+        --comment    "${comment}"
+        --target     menu
+        --mime-register
         --overwrite
-    then
-        echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Не удалось создать .desktop-файл из шаблона '${template}' (desktop-generator-installer.sh завершился с ошибкой)."
-        echo -e "${COLOR_INFO}Продолжаем установку без него — это не критично.${COLOR_OFF}"
+    )
+
+    echo -e "==== Генерируем .desktop из шаблона ${template}"
+    if ! "$DESKTOP_GEN" "${args[@]}"; then
+        echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Не удалось создать .desktop-файл из шаблона '${template}' ($DESKTOP_GEN завершился с ошибкой)."
+        echo -e "${COLOR_INFO}Это критично.${COLOR_OFF}"
+        exit 1
     fi
 }
+
+
 
 echo ""
 echo "Создаём .desktop-файлы"
 
-# Иконка для каждого шаблона из desktop_files (Exec у обоих один и тот же -- sync_all.sh)
+
+# Иконка для каждого шаблона из desktop_files.
 declare -A DESKTOP_ICON_MAP=(
     ["desktop/sync_regular.desktop"]="sync_1.icon.svg"
     ["desktop/sync_up.desktop"]="sync_1_up.icon.svg"
 )
 
+if ! is_installed "$DESKTOP_GEN"; then
+    echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Утилита '${DESKTOP_GEN}' не найдена."
+    echo -e "Она требуется для создания .desktop-файлов (ярлыков в меню)."
+    echo -e "Установите ${COLOR_USAGE}${DESKTOP_GEN}${COLOR_OFF} в PATH или положите рядом с инсталлятором."
+    echo -e "Аварийное прекращение работы."
+    exit 1
+fi
+
 for template in "${desktop_files[@]}"; do
-    generate_desktop_entry "${template}" "${scripts_to}/sync_all.sh" "${icon_to}/${DESKTOP_ICON_MAP[$template]}"
+    icon_name="${DESKTOP_ICON_MAP[$template]:-}"
+    if [[ -z "${icon_name}" ]]; then
+        echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Для шаблона ${COLOR_USAGE}${template}${COLOR_OFF} не задана иконка в массиве ${COLOR_USAGE}DESKTOP_ICON_MAP${COLOR_OFF}."
+        echo -e "${COLOR_INFO}Требуется вмешательство в код инсталлятора.${COLOR_OFF}"
+        echo -e "Аварийное прекращение работы."
+        exit 1
+    fi
+    generate_desktop_entry "${template}" "${icon_to}/${icon_name}"
 done
+
 
 # У sync_watcher нет отдельного .desktop-шаблона в desktop_files —
 # значения заданы прямо здесь.
-if is_installed "desktop-generator-installer.sh"; then
-    if ! desktop-generator-installer.sh \
-        --name     "sync_watcher" \
-        --exec     "${scripts_to}/sync_watcher.sh" \
-        --terminal true \
-        --category "Accessibility;System;Utility;" \
-        --target   menu \
-        --comment  "Скрипт следящий за изменениями и запускающий синхронизатор" \
-        --mimetype "text/x-shellscript;" \
-        --icon     "${icon_to}/sync_watcher_icon.svg" \
-        --overwrite
-    then
-        echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Не удалось создать .desktop-файл для sync_watcher (desktop-generator-installer.sh завершился с ошибкой)."
-        echo -e "${COLOR_INFO}Продолжаем установку без него — это не критично.${COLOR_OFF}"
-    fi
-else
-    echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Утилита 'desktop-generator-installer.sh' не найдена."
-    echo -e "${COLOR_INFO}Пропускаем создание .desktop-файла для sync_watcher (не критично).${COLOR_OFF}"
+if ! "$DESKTOP_GEN" \
+    --name     "sync_watcher" \
+    --exec     "${scripts_to}/sync_watcher.sh" \
+    --terminal true \
+    --category "${CATEGORY_FALLBACK}" \
+    --target   menu \
+    --comment  "Скрипт следящий за изменениями и запускающий синхронизатор" \
+    --mimetype "${MIMETYPE_FALLBACK}" \
+    --icon     "${icon_to}/sync_watcher_icon.svg" \
+    --mime-register \
+    --overwrite
+then
+    echo -e "[${COLOR_ERROR}!!${COLOR_OFF}] Не удалось создать .desktop-файл для sync_watcher ($DESKTOP_GEN завершился с ошибкой)."
+    echo -e "${COLOR_INFO}Нужно проверить ${COLOR_USAGE}${DESKTOP_GEN}${COLOR_OFF}.${COLOR_OFF}"
+    exit 1
 fi
 
 echo "Закончили создавать .desktop-файлы"
@@ -497,9 +569,9 @@ echo -e "${COLOR_OK}Ok${COLOR_OFF}.\n"
 
 
 
-echo "# Добавление include вставки файла ${ALIASES} в файл ${BASHRC} "
+echo "# Добавление include вставки файла ${ALIASES} в файл ${BASHRC}"
 echo "# для работы алиаcов и автодополнения"
-if ( grep -q "${ALIASES}" "${BASHRC}" ); 
+if grep -qF -- "${ALIASES}" "${BASHRC}"; 
 then 
     echo "В файле [${BASHRC}] вставка [${ALIASES}] есть."; 
     echo -e "${COLOR_OK}Ничего не делаем${COLOR_OFF}"; 
